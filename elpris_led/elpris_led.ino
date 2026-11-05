@@ -1,6 +1,5 @@
 // Elpris-LED v2
 // Kräver: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 Arduino core
-// Kräver även secrets.h i sketchmappen (kopiera secrets.example.h)
 //
 // Ändringar jämfört med v1:
 //  - Tidszon konfigurerbar (webb + WiFiManager), sparas i flash
@@ -10,6 +9,7 @@
 //  - Cachad data används så länge den täcker aktuell tid ("offline" först när den tar slut)
 //  - Validering av inställningar, WiFiManager-fält visar sparade värden
 //  - Inga blockerande anrop i webbhanteraren
+//  - OTA- och portallösenord sätts i webbgränssnittet och sparas i flash (inga lösenord i koden)
 
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -21,12 +21,6 @@
 #include <Preferences.h>
 #include <ArduinoOTA.h>
 #include <WebServer.h>
-
-#if __has_include("secrets.h")
-#include "secrets.h"
-#else
-#error "secrets.h saknas: kopiera secrets.example.h till secrets.h och fyll i lösenorden"
-#endif
 
 // ---------- HÅRDVARA ----------
 #define DATA_PIN     16
@@ -74,6 +68,8 @@ int  cfgNightEnd    = 6;
 int  cfgBrightDay   = 40;
 int  cfgBrightNight = 5;
 int  cfgNumLeds     = 100;
+char cfgOtaPw[33]   = "";   // tomt = OTA avstängt
+char cfgApPw[33]    = "";   // tomt = öppen konfigportal, annars minst 8 tecken
 
 // WiFiManager-fält (värden fylls i från flash i setup)
 WiFiManagerParameter pArea  ("area",   "Elprisomrade (SE1-SE4)",            "", 5);
@@ -95,6 +91,7 @@ unsigned long nextAttemptMs = 0;
 int          failStreak    = 0;
 bool         fetchFailing  = false;
 unsigned long restartAtMs   = 0;
+bool         otaActive     = false;
 
 // =====================================================================
 //  Inställningar: ladda / validera / spara
@@ -112,6 +109,7 @@ void sanitizeSettings() {
   cfgNumLeds     = constrain(cfgNumLeds, 1, MAX_LEDS);
 
   if (strlen(cfgTz) < 3) strlcpy(cfgTz, DEFAULT_TZ, sizeof(cfgTz));
+  if (strlen(cfgApPw) > 0 && strlen(cfgApPw) < 8) cfgApPw[0] = '\0';   // WPA2 kräver minst 8 tecken
 }
 
 void loadSettings() {
@@ -124,6 +122,8 @@ void loadSettings() {
   cfgBrightDay   = preferences.getInt("bday", 40);
   cfgBrightNight = preferences.getInt("bnight", 5);
   cfgNumLeds     = preferences.getInt("leds", 100);
+  preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
+  preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
   sanitizeSettings();
 }
 
@@ -135,6 +135,8 @@ void saveSettings() {
   preferences.putInt("bday", cfgBrightDay);
   preferences.putInt("bnight", cfgBrightNight);
   preferences.putInt("leds", cfgNumLeds);
+  preferences.putString("otapw", cfgOtaPw);
+  preferences.putString("appw", cfgApPw);
 }
 
 void applyTimezone() {
@@ -342,9 +344,10 @@ void handleRoot() {
   int32_t ns = (int32_t)(now / SLOT_SEC);
   String priceTxt = (now > 1700000000 && hasSlot(ns)) ? String(getSlot(ns), 2) + " SEK/kWh" : String("saknas");
   String status = fetchFailing ? "Kan inte hämta priser (försöker igen automatiskt)" : "OK";
+  String otaTxt = otaActive ? "Aktiv" : "Av (sätt ett OTA-lösenord nedan)";
 
   String html;
-  html.reserve(4500);
+  html.reserve(5500);
   html += "<html lang='sv'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
@@ -354,7 +357,8 @@ void handleRoot() {
   html += "<h2>Elpris LED</h2><div class='card'><h3>Live Status</h3>";
   html += "<p><strong>Pris just nu:</strong> " + priceTxt + "<br><small>Spotpris exkl. moms, nät och skatt</small></p>";
   html += "<p><strong>Område:</strong> " + String(cfgArea) + "</p>";
-  html += "<p><strong>Status:</strong> " + status + "</p></div>";
+  html += "<p><strong>Status:</strong> " + status + "</p>";
+  html += "<p><strong>OTA:</strong> " + otaTxt + "</p></div>";
 
   html += "<div class='card'><h3>Inställningar</h3><form action='/save' method='POST'>";
   html += "<label>Elprisområde:</label><select name='area'>";
@@ -378,6 +382,12 @@ void handleRoot() {
   html += "<label>Nattläge Slut (timme 0-23):</label><input type='number' name='nend' min='0' max='23' value='" + String(cfgNightEnd) + "'>";
   html += "<label>Ljusstyrka Dag (1-255):</label><input type='number' name='bday' min='1' max='255' value='" + String(cfgBrightDay) + "'>";
   html += "<label>Ljusstyrka Natt (0-255):</label><input type='number' name='bnight' min='0' max='255' value='" + String(cfgBrightNight) + "'>";
+
+  html += "<label>OTA-lösenord (tomt = oförändrat, ändring startar om):</label>";
+  html += "<input type='password' name='otapw' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgOtaPw) ? "(satt)" : "(inte satt)") + "'>";
+  html += "<label>Lösenord för konfigportalen, minst 8 tecken (tomt = oförändrat):</label>";
+  html += "<input type='password' name='appw' minlength='8' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgApPw) ? "(satt)" : "(öppen portal)") + "'>";
+
   html += "<button type='submit'>Spara ändringar</button></form></div></body></html>";
 
   server.send(200, "text/html", html);
@@ -388,6 +398,7 @@ void handleSave() {
   strlcpy(oldArea, cfgArea, sizeof(oldArea));
   strlcpy(oldTz, cfgTz, sizeof(oldTz));
   int oldLeds = cfgNumLeds;
+  bool otaPwChanged = false;
 
   if (server.hasArg("area"))   server.arg("area").toCharArray(cfgArea, sizeof(cfgArea));
   if (server.hasArg("tz"))     server.arg("tz").toCharArray(cfgTz, sizeof(cfgTz));
@@ -396,6 +407,14 @@ void handleSave() {
   if (server.hasArg("bday"))   cfgBrightDay   = server.arg("bday").toInt();
   if (server.hasArg("bnight")) cfgBrightNight = server.arg("bnight").toInt();
   if (server.hasArg("leds"))   cfgNumLeds     = server.arg("leds").toInt();
+
+  if (server.hasArg("otapw") && server.arg("otapw").length() > 0) {
+    String pw = server.arg("otapw");
+    if (pw != cfgOtaPw) { pw.toCharArray(cfgOtaPw, sizeof(cfgOtaPw)); otaPwChanged = true; }
+  }
+  if (server.hasArg("appw") && server.arg("appw").length() >= 8) {
+    server.arg("appw").toCharArray(cfgApPw, sizeof(cfgApPw));   // gäller nästa gång portalen öppnas
+  }
 
   sanitizeSettings();
   saveSettings();
@@ -408,7 +427,7 @@ void handleSave() {
     fetchFailing = false;
     needRebuild = true;
   }
-  if (oldLeds != cfgNumLeds) restartAtMs = millis() + 1500;
+  if (oldLeds != cfgNumLeds || otaPwChanged) restartAtMs = millis() + 1500;
 
   server.sendHeader("Location", "/", true);
   server.send(303, "text/plain", "");
@@ -449,7 +468,8 @@ void setup() {
   wm.setConnectTimeout(30);         // försök ansluta till sparat nät i 30 s
   wm.setConfigPortalTimeout(180);   // stäng portalen efter 3 min och starta om, så att wifi provas igen
 
-  if (!wm.autoConnect("Elpris-LED-Config", AP_PASSWORD)) {
+  const char* apPw = strlen(cfgApPw) ? cfgApPw : nullptr;   // inget lösenord satt = öppen portal
+  if (!wm.autoConnect("Elpris-LED-Config", apPw)) {
     Serial.println("Kunde inte ansluta, startar om...");
     delay(3000);
     ESP.restart();
@@ -472,9 +492,15 @@ void setup() {
   Serial.print("IP-adress: ");
   Serial.println(WiFi.localIP());
 
-  ArduinoOTA.setHostname("ElprisLED");
-  ArduinoOTA.setPassword(OTA_PASSWORD);
-  ArduinoOTA.begin();
+  // OTA startas bara när ett lösenord är satt i webbgränssnittet
+  if (strlen(cfgOtaPw)) {
+    ArduinoOTA.setHostname("ElprisLED");
+    ArduinoOTA.setPassword(cfgOtaPw);
+    ArduinoOTA.begin();
+    otaActive = true;
+  } else {
+    Serial.println("OTA av: sätt ett OTA-lösenord i webbgränssnittet");
+  }
 
   server.on("/", HTTP_GET, handleRoot);
   server.on("/save", HTTP_POST, handleSave);
@@ -484,7 +510,7 @@ void setup() {
 }
 
 void loop() {
-  ArduinoOTA.handle();
+  if (otaActive) ArduinoOTA.handle();
   server.handleClient();
   if (restartAtMs && (long)(millis() - restartAtMs) >= 0) ESP.restart();
 

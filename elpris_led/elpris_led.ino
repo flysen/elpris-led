@@ -10,6 +10,7 @@
 //  - Validering av inställningar, WiFiManager-fält visar sparade värden
 //  - Inga blockerande anrop i webbhanteraren
 //  - OTA- och portallösenord sätts i webbgränssnittet och sparas i flash (inga lösenord i koden)
+//  - Ren logik ligger i elpris_logic.h och testas med "make test" (se tests/)
 
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -21,6 +22,7 @@
 #include <Preferences.h>
 #include <ArduinoOTA.h>
 #include <WebServer.h>
+#include "elpris_logic.h"
 
 // ---------- HÅRDVARA ----------
 #define DATA_PIN     16
@@ -29,10 +31,10 @@
 #define COLOR_ORDER  GRB
 
 // ---------- KONSTANTER ----------
+// SLOT_SEC och backoff-tiderna finns i elpris_logic.h
 const char* NTP_SERVER = "pool.ntp.org";
 const char* DEFAULT_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // Sverige
 
-const int SLOT_SEC        = 900;      // 15 minuter
 const int SLOTS_PER_DAY   = 96;
 const int RING_SIZE       = 512;      // cache för ca 5 dygn av 15-minutersslots
 
@@ -40,8 +42,6 @@ const int TOMORROW_FETCH_MIN = 13 * 60 + 30;  // börja leta efter morgondagens 
 const int TOMORROW_ERROR_MIN = 16 * 60;       // först efter 16:00 räknas saknade morgondagspriser som fel
 const int STATUS_LEDS        = 3;             // antal LED som blinkar magenta vid hämtningsfel
 
-const unsigned long BACKOFF_MIN_MS         = 30UL * 1000UL;
-const unsigned long BACKOFF_MAX_MS         = 30UL * 60UL * 1000UL;
 const unsigned long NOT_PUBLISHED_RETRY_MS  = 15UL * 60UL * 1000UL;
 
 // ---------- LED-DATA ----------
@@ -98,9 +98,7 @@ bool         otaActive     = false;
 // =====================================================================
 void sanitizeSettings() {
   for (int i = 0; cfgArea[i]; i++) cfgArea[i] = toupper(cfgArea[i]);
-  bool areaOk = strlen(cfgArea) == 3 && cfgArea[0] == 'S' && cfgArea[1] == 'E' &&
-                cfgArea[2] >= '1' && cfgArea[2] <= '4';
-  if (!areaOk) strcpy(cfgArea, "SE3");
+  if (!validArea(cfgArea)) strcpy(cfgArea, "SE3");
 
   cfgNightStart  = constrain(cfgNightStart, 0, 23);
   cfgNightEnd    = constrain(cfgNightEnd, 0, 23);
@@ -145,41 +143,8 @@ void applyTimezone() {
 }
 
 // =====================================================================
-//  Tidshjälp
+//  Tidshjälp (daysFromCivil, parseIso och localMidnightSlot finns i elpris_logic.h)
 // =====================================================================
-long daysFromCivil(int y, int m, int d) {
-  y -= (m <= 2);
-  long era = (y >= 0 ? y : y - 399) / 400;
-  int yoe = y - era * 400;
-  int mp  = (m > 2) ? m - 3 : m + 9;
-  int doy = (153 * mp + 2) / 5 + d - 1;
-  long doe = yoe * 365L + yoe / 4 - yoe / 100 + doy;
-  return era * 146097L + doe - 719468L;
-}
-
-bool parseIso(const char* s, time_t& out) {
-  int Y, M, D, h, m, sec, oh = 0, om = 0;
-  char sign = 0;
-  int n = sscanf(s, "%d-%d-%dT%d:%d:%d%c%d:%d", &Y, &M, &D, &h, &m, &sec, &sign, &oh, &om);
-  if (n < 6) return false;
-  long t = daysFromCivil(Y, M, D) * 86400L + h * 3600L + m * 60L + sec;
-  if (n >= 9 && (sign == '+' || sign == '-')) {
-    long off = oh * 3600L + om * 60L;
-    t -= (sign == '+') ? off : -off;
-  }
-  out = (time_t)t;
-  return true;
-}
-
-int32_t localMidnightSlot(time_t now, int dayOffset) {
-  struct tm t;
-  localtime_r(&now, &t);
-  t.tm_mday += dayOffset;
-  t.tm_hour = 0; t.tm_min = 0; t.tm_sec = 0;
-  t.tm_isdst = -1;
-  return (int32_t)(mktime(&t) / SLOT_SEC);
-}
-
 bool dayCovered(int32_t startSlot) {
   return hasSlot(startSlot + 2) && hasSlot(startSlot + 50) && hasSlot(startSlot + 90);
 }
@@ -227,10 +192,10 @@ bool fetchDay(const String& url, int& code) {
     if (!ts) continue;
     time_t a, b;
     if (!parseIso(ts, a)) continue;
-    if (!te || !parseIso(te, b) || b <= a) b = a + 3600;
+    if (!te || !parseIso(te, b)) b = a;   // priceSlots antar då en timme
     float p = o["SEK_per_kWh"] | 0.0f;
-    int32_t s0 = (int32_t)(a / SLOT_SEC);
-    int32_t s1 = (int32_t)((b + SLOT_SEC - 1) / SLOT_SEC);
+    int32_t s0, s1;
+    priceSlots(a, b, s0, s1);
     for (int32_t s = s0; s < s1; s++) { putSlot(s, p); stored++; }
   }
   if (stored == 0) { code = -3; return false; }
@@ -266,9 +231,7 @@ void serviceFetch(const struct tm& t, time_t now) {
     Serial.println("Morgondagens priser inte publicerade än");
   } else {
     failStreak++;
-    int shift = (failStreak - 1 > 6) ? 6 : failStreak - 1;
-    unsigned long d = BACKOFF_MIN_MS << shift;
-    if (d > BACKOFF_MAX_MS) d = BACKOFF_MAX_MS;
+    unsigned long d = backoffMs(failStreak);
     nextAttemptMs = ms + d;
     fetchFailing = (dayOffset == 0) || (minutes >= TOMORROW_ERROR_MIN);
     Serial.printf("Hämtning misslyckades (kod %d), nytt försök om %lu s\n", code, d / 1000);
@@ -279,9 +242,7 @@ void serviceFetch(const struct tm& t, time_t now) {
 //  Bygg färgerna för slingan
 // =====================================================================
 inline void ledRange(int i, int& s0, int& s1) {
-  s0 = (int)((long)i * winSlots / cfgNumLeds);
-  s1 = (int)((long)(i + 1) * winSlots / cfgNumLeds);
-  if (s1 <= s0) s1 = s0 + 1;
+  ledSlotRange(i, winSlots, cfgNumLeds, s0, s1);
 }
 
 void rebuildTimeline(time_t now) {
@@ -532,9 +493,7 @@ void loop() {
   serviceFetch(t, now);
   if (needRebuild) { rebuildTimeline(now); needRebuild = false; }
 
-  bool isNight;
-  if (cfgNightStart > cfgNightEnd) isNight = (t.tm_hour >= cfgNightStart || t.tm_hour < cfgNightEnd);
-  else                             isNight = (t.tm_hour >= cfgNightStart && t.tm_hour < cfgNightEnd);
+  bool isNight = isNightHour(t.tm_hour, cfgNightStart, cfgNightEnd);
   FastLED.setBrightness(isNight ? cfgBrightNight : cfgBrightDay);
 
   int32_t nowSlot = (int32_t)(now / SLOT_SEC);

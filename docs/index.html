@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installera Elpris-LED</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #eef1f3;
+    --ink: #1c2830;
+    --muted: #55646e;
+    --line: #c8d1d7;
+    --strip: #20292f;
+    --font: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151e25;
+      --ink: #e3e9ed;
+      --muted: #95a4ae;
+      --line: #2d3b45;
+      --strip: #0e1418;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: 1.0625rem;
+    line-height: 1.55;
+  }
+  main { max-width: 40rem; margin: 0 auto; padding: 3.5rem 1.25rem 4rem; }
+  h1 { font-size: clamp(2.4rem, 7vw, 3.6rem); line-height: 1.05; margin: 0 0 .75rem; letter-spacing: -0.01em; }
+  h2 { font-size: 1.5rem; line-height: 1.2; margin: 0 0 .75rem; }
+  p { margin: 0 0 1rem; }
+  .lead { font-size: 1.25rem; max-width: 34rem; margin-bottom: 2.25rem; }
+
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(48, 1fr);
+    gap: clamp(1px, .6vw, 4px);
+    padding: .55rem .9rem;
+    background: var(--strip);
+    border-radius: 999px;
+  }
+  .led { aspect-ratio: 1; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  .led.now { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+  @media (prefers-reduced-motion: reduce) {
+    .led.now { animation: none; outline: 2px solid #fff; outline-offset: 1px; }
+  }
+  .hours { display: flex; justify-content: space-between; padding: .35rem .9rem 0; color: var(--muted); font-size: .85rem; }
+  .caption { color: var(--muted); font-size: .95rem; margin-top: .5rem; }
+
+  section { margin-top: 3rem; padding-top: 2rem; border-top: 1px solid var(--line); }
+  .install button {
+    font: inherit;
+    font-weight: 700;
+    font-size: 1.1rem;
+    padding: .85rem 1.4rem;
+    border: 0;
+    border-radius: .5rem;
+    background: var(--ink);
+    color: var(--bg);
+    cursor: pointer;
+  }
+  .install button:focus-visible { outline: 3px solid hsl(120 70% 42%); outline-offset: 3px; }
+  .notice { display: block; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: .5rem; }
+  .after-button { margin-top: 1.25rem; }
+  .small { color: var(--muted); font-size: .95rem; }
+  ol { padding-left: 1.3rem; margin: 0; }
+  li { margin-bottom: .6rem; }
+  a { color: inherit; text-underline-offset: .2em; }
+  footer { margin-top: 3rem; color: var(--muted); font-size: .95rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Elpris-LED</h1>
+  <p class="lead">En LED-slinga som visar dygnets elpriser i färg. Grönt när elen är billig, rött när den är dyr.</p>
+
+  <div class="strip" id="strip" role="img" aria-label="Exempel på slingan: grönt på natten och mitt på dagen, rött vid morgon- och kvällstopparna"></div>
+  <div class="hours" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
+  <p class="caption">Ett exempeldygn. Lysdioden som pulserar är just nu.</p>
+
+  <section class="install">
+    <h2>Installera</h2>
+    <p>Anslut din ESP32 till datorn med en USB-kabel och klicka på knappen. Installationen fungerar i Chrome och Edge på en dator.</p>
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate">Installera på ESP32</button>
+      <span slot="unsupported" class="notice">Den här webbläsaren kan inte installera via USB. Öppna sidan i Chrome eller Edge på en dator.</span>
+      <span slot="not-allowed" class="notice">Installationen kräver att sidan öppnas via https.</span>
+    </esp-web-install-button>
+    <p class="small after-button">Välj att radera enheten vid första installationen. Vid en uppdatering behålls wifi och inställningar så länge du inte raderar.</p>
+    <p class="small">Syns ingen port att välja? Då behöver datorn en drivrutin för kortets USB-krets, oftast CP210x eller CH340.</p>
+  </section>
+
+  <section>
+    <h2>Efter installationen</h2>
+    <ol>
+      <li>Slingan pulserar blått och lampan startar ett eget wifi som heter <strong>Elpris-LED-Config</strong>. Anslut till det med mobilen.</li>
+      <li>Öppnas ingen sida automatiskt, gå till 192.168.4.1. Välj ditt wifi och fyll i elområde och antal LED.</li>
+      <li>Lampan ansluter till ditt nätverk, hämtar priserna och börjar visa färger.</li>
+      <li>Leta upp lampans IP-adress i routern och öppna den i webbläsaren. Sätt ett OTA-lösenord och ett lösenord för konfigportalen där.</li>
+    </ol>
+  </section>
+
+  <footer>
+    <p>Komponentlista, kopplingsschema och källkod finns på <a href="https://github.com/flysen/elpris-led">GitHub</a>. Priserna kommer från <a href="https://www.elprisetjustnu.se">elprisetjustnu.se</a>.</p>
+    <p id="version"></p>
+  </footer>
+</main>
+
+<script>
+  // Exempeldygn: lågt på natten, toppar morgon och kväll. Samma färgskala som lampan.
+  const strip = document.getElementById('strip');
+  const now = new Date();
+  const nowIdx = now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0);
+  const prices = [];
+  for (let i = 0; i < 48; i++) {
+    const h = i / 2;
+    prices.push(0.35 + 0.9 * Math.exp(-((h - 8) ** 2) / 4) + 1.1 * Math.exp(-((h - 18) ** 2) / 5) + 0.15 * Math.sin(h / 3));
+  }
+  const mn = Math.min(...prices), mx = Math.max(...prices);
+  prices.forEach((p, i) => {
+    const led = document.createElement('span');
+    led.className = 'led' + (i === nowIdx ? ' now' : '');
+    const hue = Math.round((1 - (p - mn) / (mx - mn)) * 120);
+    led.style.setProperty('--c', `hsl(${hue} 85% 52%)`);
+    strip.appendChild(led);
+  });
+
+  fetch('manifest.json')
+    .then(r => r.json())
+    .then(m => { document.getElementById('version').textContent = 'Version ' + m.version; })
+    .catch(() => {});
+</script>
+</body>
+</html>

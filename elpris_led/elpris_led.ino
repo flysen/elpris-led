@@ -1,5 +1,6 @@
 // Elpris-LED v2
 // Kräver: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 Arduino core
+// Kräver även secrets.h i sketchmappen (kopiera secrets.example.h)
 //
 // Ändringar jämfört med v1:
 //  - Tidszon konfigurerbar (webb + WiFiManager), sparas i flash
@@ -20,6 +21,12 @@
 #include <Preferences.h>
 #include <ArduinoOTA.h>
 #include <WebServer.h>
+
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#error "secrets.h saknas: kopiera secrets.example.h till secrets.h och fyll i lösenorden"
+#endif
 
 // ---------- HÅRDVARA ----------
 #define DATA_PIN     16
@@ -47,7 +54,7 @@ const unsigned long NOT_PUBLISHED_RETRY_MS  = 15UL * 60UL * 1000UL;
 CRGB leds[MAX_LEDS];
 CRGB ledColor[MAX_LEDS];
 int  winStartSlot = 0;     // första slot i visningsfönstret (lokal midnatt idag)
-int  winSlots     = SLOTS_PER_DAY;   // 96 (24 h) eller 192 (48 h)
+int  winSlots     = SLOTS_PER_DAY;   // ett eller två dygn, räknat från verkliga midnatter (DST-säkert)
 
 // ---------- PRISCACHE (ringbuffer, nyckel = absolut 15-minutersslot sedan epoch) ----------
 int32_t slotId[RING_SIZE];
@@ -193,6 +200,7 @@ bool fetchDay(const String& url, int& code) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
+  http.setConnectTimeout(5000);
   http.setTimeout(5000);
   http.useHTTP10(true);
   if (!http.begin(client, url)) { code = -1; return false; }
@@ -252,6 +260,7 @@ void serviceFetch(const struct tm& t, time_t now) {
     Serial.printf("Priser hämtade (dag +%d)\n", dayOffset);
   } else if (dayOffset == 1 && code == 404) {
     nextAttemptMs = ms + NOT_PUBLISHED_RETRY_MS;
+    fetchFailing = (minutes >= TOMORROW_ERROR_MIN);
     Serial.println("Morgondagens priser inte publicerade än");
   } else {
     failStreak++;
@@ -274,9 +283,12 @@ inline void ledRange(int i, int& s0, int& s1) {
 }
 
 void rebuildTimeline(time_t now) {
+  // Fönstret räknas från verkliga midnatter så att 23- och 25-timmarsdygn (sommartid) blir rätt
   winStartSlot = localMidnightSlot(now, 0);
-  bool tomorrow = hasSlot(winStartSlot + 100);
-  winSlots = tomorrow ? 2 * SLOTS_PER_DAY : SLOTS_PER_DAY;
+  int32_t tomorrowStart = localMidnightSlot(now, 1);
+  int32_t dayAfterStart = localMidnightSlot(now, 2);
+  bool tomorrow = dayCovered(tomorrowStart);
+  winSlots = (tomorrow ? dayAfterStart : tomorrowStart) - winStartSlot;
 
   float mn = 1e9f, mx = -1e9f;
   for (int s = 0; s < winSlots; s++) {
@@ -393,6 +405,7 @@ void handleSave() {
     clearCache();
     nextAttemptMs = 0;
     failStreak = 0;
+    fetchFailing = false;
     needRebuild = true;
   }
   if (oldLeds != cfgNumLeds) restartAtMs = millis() + 1500;
@@ -433,8 +446,10 @@ void setup() {
   wm.addParameter(&pBnight);
   wm.addParameter(&pLeds);
   wm.setSaveConfigCallback(saveConfigCallback);
+  wm.setConnectTimeout(30);         // försök ansluta till sparat nät i 30 s
+  wm.setConfigPortalTimeout(180);   // stäng portalen efter 3 min och starta om, så att wifi provas igen
 
-  if (!wm.autoConnect("Elpris-LED-Config", "elpris123")) {
+  if (!wm.autoConnect("Elpris-LED-Config", AP_PASSWORD)) {
     Serial.println("Kunde inte ansluta, startar om...");
     delay(3000);
     ESP.restart();
@@ -458,6 +473,7 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   ArduinoOTA.setHostname("ElprisLED");
+  ArduinoOTA.setPassword(OTA_PASSWORD);
   ArduinoOTA.begin();
 
   server.on("/", HTTP_GET, handleRoot);
@@ -518,7 +534,7 @@ void loop() {
   if (fetchFailing) {
     CRGB c = ((millis() / 500) % 2) ? CRGB::Magenta : CRGB::Black;
     for (int i = 0; i < STATUS_LEDS && i < cfgNumLeds; i++) leds[i] = c;
-    }
+  }
 
   FastLED.show();
   delay(20);

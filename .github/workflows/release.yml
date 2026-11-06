@@ -1,6 +1,6 @@
 name: Release
 
-# Körs när en versionstagg pushas, t.ex.: git tag v2.1 && git push origin v2.1
+# Runs when a version tag is pushed, e.g.: git tag v2.1 && git push origin v2.1
 on:
   push:
     tags: ['v*']
@@ -18,14 +18,14 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Kör tester
+      - name: Run tests
         run: make test
 
       - uses: arduino/setup-arduino-cli@v2
 
-      - name: Installera ESP32-kärna och bibliotek
+      - name: Install ESP32 core and libraries
         run: |
           arduino-cli config init
           arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
@@ -33,17 +33,17 @@ jobs:
           arduino-cli core install esp32:esp32
           arduino-cli lib install FastLED ArduinoJson WiFiManager
 
-      - name: Bygg firmware
+      - name: Build firmware
         run: arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir build-out elpris_led
 
-      - name: Förbered release och installationssida
+      - name: Prepare release and install page
         run: |
           VERSION="${GITHUB_REF_NAME}"
           B=build-out/elpris_led.ino
           BOOT_APP0=$(find ~/.arduino15/packages/esp32/hardware -name boot_app0.bin -print -quit)
           test -n "$BOOT_APP0"
 
-          # Installationssidan: separata delar, så att wifi och inställningar behålls vid uppdatering
+          # Install page: separate parts, so wifi and settings are kept on update
           mkdir -p site/firmware dist
           cp -r docs/. site/
           cp "$B.bootloader.bin" site/firmware/bootloader.bin
@@ -70,7 +70,7 @@ jobs:
           }
           EOF
 
-          # Release-filer: en komplett image för esptool och en ren app-fil för OTA
+          # Release files: a full image for esptool and a plain app file for OTA
           MERGED="$B.merged.bin"
           if [ ! -f "$MERGED" ]; then
             pip install esptool==4.8.1
@@ -83,13 +83,13 @@ jobs:
           cp "$MERGED" "dist/elpris-led-${VERSION}-esp32-full.bin"
           cp "$B.bin"  "dist/elpris-led-${VERSION}-esp32-ota.bin"
 
-      - name: Skapa release
-        uses: softprops/action-gh-release@v2
+      - name: Create release
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*.bin
           generate_release_notes: true
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
@@ -101,4 +101,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

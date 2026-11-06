@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="sv">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Installera Elpris-LED</title>
+<title>Install Elpris-LED</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
@@ -84,42 +84,42 @@
 <body>
 <main>
   <h1>Elpris-LED</h1>
-  <p class="lead">En LED-slinga som visar dygnets elpriser i färg. Grönt när elen är billig, rött när den är dyr.</p>
+  <p class="lead">An LED strip that shows the day's electricity prices in color. Green when power is cheap, red when it's expensive.</p>
 
-  <div class="strip" id="strip" role="img" aria-label="Exempel på slingan: grönt på natten och mitt på dagen, rött vid morgon- och kvällstopparna"></div>
+  <div class="strip" id="strip" role="img" aria-label="Example of the strip: green at night and midday, red at the morning and evening peaks"></div>
   <div class="hours" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
-  <p class="caption">Ett exempeldygn. Lysdioden som pulserar är just nu.</p>
+  <p class="caption">An example day. The pulsing LED is right now.</p>
 
   <section class="install">
-    <h2>Installera</h2>
-    <p>Anslut din ESP32 till datorn med en USB-kabel och klicka på knappen. Installationen fungerar i Chrome och Edge på en dator.</p>
+    <h2>Install</h2>
+    <p>Connect your ESP32 to the computer with a USB cable and click the button. Installing works in Chrome and Edge on a computer.</p>
     <esp-web-install-button manifest="manifest.json">
-      <button slot="activate">Installera på ESP32</button>
-      <span slot="unsupported" class="notice">Den här webbläsaren kan inte installera via USB. Öppna sidan i Chrome eller Edge på en dator.</span>
-      <span slot="not-allowed" class="notice">Installationen kräver att sidan öppnas via https.</span>
+      <button slot="activate">Install on ESP32</button>
+      <span slot="unsupported" class="notice">This browser can't install over USB. Open the page in Chrome or Edge on a computer.</span>
+      <span slot="not-allowed" class="notice">Installing requires the page to be opened over https.</span>
     </esp-web-install-button>
-    <p class="small after-button">Välj att radera enheten vid första installationen. Vid en uppdatering behålls wifi och inställningar så länge du inte raderar.</p>
-    <p class="small">Syns ingen port att välja? Då behöver datorn en drivrutin för kortets USB-krets, oftast CP210x eller CH340.</p>
+    <p class="small after-button">Choose to erase the device on the first install. When updating, wifi and settings are kept as long as you don't erase.</p>
+    <p class="small">No port to choose? The computer needs a driver for the board's USB chip, usually CP210x or CH340.</p>
   </section>
 
   <section>
-    <h2>Efter installationen</h2>
+    <h2>After installing</h2>
     <ol>
-      <li>Slingan pulserar blått och lampan startar ett eget wifi som heter <strong>Elpris-LED-Config</strong>. Anslut till det med mobilen.</li>
-      <li>Öppnas ingen sida automatiskt, gå till 192.168.4.1. Välj ditt wifi och fyll i elområde och antal LED.</li>
-      <li>Lampan ansluter till ditt nätverk, hämtar priserna och börjar visa färger.</li>
-      <li>Leta upp lampans IP-adress i routern och öppna den i webbläsaren. Sätt ett OTA-lösenord och ett lösenord för konfigportalen där.</li>
+      <li>The strip pulses blue and the lamp starts its own wifi called <strong>Elpris-LED-Config</strong>. Connect to it with your phone.</li>
+      <li>If no page opens automatically, go to 192.168.4.1. Choose your wifi and fill in price area and number of LEDs.</li>
+      <li>The lamp joins your network, fetches the prices and starts showing colors.</li>
+      <li>Find the lamp's IP address in your router and open it in a browser. Set an OTA password and a config portal password there.</li>
     </ol>
   </section>
 
   <footer>
-    <p>Komponentlista, kopplingsschema och källkod finns på <a href="https://github.com/flysen/elpris-led">GitHub</a>. Priserna kommer från <a href="https://www.elprisetjustnu.se">elprisetjustnu.se</a>.</p>
+    <p>Parts list, wiring diagram and source code are on <a href="https://github.com/flysen/elpris-led">GitHub</a>. Prices come from <a href="https://www.elprisetjustnu.se">elprisetjustnu.se</a>.</p>
     <p id="version"></p>
   </footer>
 </main>
 
 <script>
-  // Exempeldygn: lågt på natten, toppar morgon och kväll. Samma färgskala som lampan.
+  // Example day: low at night, peaks in the morning and evening. Same color scale as the lamp.
   const strip = document.getElementById('strip');
   const now = new Date();
   const nowIdx = now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0);

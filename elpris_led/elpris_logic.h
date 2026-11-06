@@ -1,14 +1,14 @@
-// Ren logik utan Arduino-beroenden, så att den kan testas på en vanlig dator (se tests/).
+// Pure logic without Arduino dependencies, so it can be tested on a regular computer (see tests/).
 #pragma once
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
 
-const int SLOT_SEC = 900;   // 15 minuter
+const int SLOT_SEC = 900;   // 15 minutes
 const unsigned long BACKOFF_MIN_MS = 30UL * 1000UL;
 const unsigned long BACKOFF_MAX_MS = 30UL * 60UL * 1000UL;
 
-// Antal dygn sedan 1970-01-01 för ett datum
+// Number of days since 1970-01-01 for a date
 inline long long daysFromCivil(int y, int m, int d) {
   y -= (m <= 2);
   long long era = (y >= 0 ? y : y - 399) / 400;
@@ -19,8 +19,8 @@ inline long long daysFromCivil(int y, int m, int d) {
   return era * 146097LL + doe - 719468LL;
 }
 
-// Tolkar ISO 8601, t.ex. "2026-11-05T00:00:00+01:00", till UTC-sekunder.
-// Utan offset eller med Z tolkas tiden som UTC.
+// Parses ISO 8601, e.g. "2026-11-05T00:00:00+01:00", to UTC seconds.
+// Without an offset, or with Z, the time is treated as UTC.
 inline bool parseIso(const char* s, time_t& out) {
   int Y, M, D, h, m, sec, oh = 0, om = 0;
   char sign = 0;
@@ -35,14 +35,14 @@ inline bool parseIso(const char* s, time_t& out) {
   return true;
 }
 
-// Slots som prisintervallet [a, b) täcker. Saknas slut eller är det ogiltigt antas en timme.
+// Slots covered by the price interval [a, b). If the end is missing or invalid, one hour is assumed.
 inline void priceSlots(time_t a, time_t b, int32_t& s0, int32_t& s1) {
   if (b <= a) b = a + 3600;
   s0 = (int32_t)(a / SLOT_SEC);
   s1 = (int32_t)((b + SLOT_SEC - 1) / SLOT_SEC);
 }
 
-// Slot för lokal midnatt dayOffset dygn från now (tidszon enligt TZ).
+// Slot for local midnight dayOffset days from now (time zone from TZ).
 inline int32_t localMidnightSlot(time_t now, int dayOffset) {
   struct tm t;
   localtime_r(&now, &t);
@@ -52,20 +52,20 @@ inline int32_t localMidnightSlot(time_t now, int dayOffset) {
   return (int32_t)(mktime(&t) / SLOT_SEC);
 }
 
-// Vilka slots i fönstret som LED nummer i visar. Hela fönstret täcks utan luckor.
+// Which slots in the window LED number i shows. The whole window is covered without gaps.
 inline void ledSlotRange(int i, int winSlots, int numLeds, int& s0, int& s1) {
   s0 = (int)((long long)i * winSlots / numLeds);
   s1 = (int)((long long)(i + 1) * winSlots / numLeds);
   if (s1 <= s0) s1 = s0 + 1;
 }
 
-// Nattläge, även när intervallet går över midnatt. start == end betyder aldrig natt.
+// Night mode, also when the interval crosses midnight. start == end means never night.
 inline bool isNightHour(int hour, int start, int end) {
   if (start > end) return hour >= start || hour < end;
   return hour >= start && hour < end;
 }
 
-// Väntetid före nästa försök: 30 s som fördubblas per misslyckande, högst 30 min.
+// Wait before the next attempt: 30 s, doubled per failure, at most 30 min.
 inline unsigned long backoffMs(int failStreak) {
   int shift = failStreak - 1;
   if (shift < 0) shift = 0;
@@ -74,7 +74,7 @@ inline unsigned long backoffMs(int failStreak) {
   return d > BACKOFF_MAX_MS ? BACKOFF_MAX_MS : d;
 }
 
-// SE1-SE4 med versaler
+// SE1-SE4 in upper case
 inline bool validArea(const char* a) {
   return a[0] == 'S' && a[1] == 'E' && a[2] >= '1' && a[2] <= '4' && a[3] == '\0';
 }

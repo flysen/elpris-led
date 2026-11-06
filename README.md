@@ -1,112 +1,57 @@
 # Elpris-LED
 
-En LED-slinga som visar dygnets elpriser i färg: grönt när elen är billig, rött när den är dyr. Lampan hämtar spotpriset för ditt elområde (SE1–SE4) från [elprisetjustnu.se](https://www.elprisetjustnu.se) och visar dygnet från midnatt till midnatt längs slingan. Lysdioden för just nu pulserar. När morgondagens priser har publicerats, vanligtvis efter lunch, visas båda dygnen.
+An ESP32 and a WS2812B LED strip that show the day's Swedish spot electricity prices as colors, from green (cheap) to red (expensive). Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se).
 
-**Installera direkt från webbläsaren: [flysen.github.io/elpris-led](https://flysen.github.io/elpris-led/)**
+**Install from the browser: [flysen.github.io/elpris-led](https://flysen.github.io/elpris-led/)** (Chrome or Edge, no compiling needed)
 
-Du behöver inte kompilera något. Installationssidan flashar färdig firmware via USB i Chrome eller Edge.
+## Features
 
-## Det här behöver du
+- Shows today from midnight to midnight along the strip, and tomorrow too once prices are published (usually after lunch).
+- The LED for the current 15 minutes pulses.
+- The color scale is relative to the period shown, so even a cheap day has red hours.
+- Price area SE1–SE4, number of LEDs (up to 300), time zone, night mode hours and day/night brightness are set in a web UI.
+- First-time setup through its own wifi, **Elpris-LED-Config**, at `http://192.168.4.1`.
+- Few API calls; cached prices are used if fetching fails, with automatic retries.
+- OTA updates and a config portal password, both set in the web UI. No passwords in the code.
+- Handles daylight saving time correctly (23- and 25-hour days).
 
-| Del | Kommentar |
+## Status colors
+
+| What you see | Meaning |
 |---|---|
-| ESP32-utvecklingskort | En vanlig ESP32, till exempel ESP32-DevKitC eller ett kort med WROOM-32. ESP32-C3, -S2 och -S3 stöds inte av den färdiga firmwaren. |
-| WS2812B-slinga, 5 V | Upp till 300 LED. Antalet ställs in efter installationen. |
-| Nätaggregat, 5 V | Räkna med upp till 60 mA per LED på full vit ljusstyrka. Med standardinställningen drar slingan betydligt mindre, men aggregatet bör klara full ljusstyrka. |
-| Resistor, 330–470 Ω | I dataledningen, så nära slingan som möjligt. |
-| Kondensator, 1000 µF, minst 6,3 V | Över +5 V och GND vid slingans ingång. |
-| USB-kabel med data | För installationen. Vissa kablar kan bara ladda. |
+| Whole strip pulses blue | Waiting for time or prices |
+| Whole strip pulses purple | No prices for now and fetching fails |
+| First three LEDs blink magenta | Fetching fails, cached prices still shown |
 
-ESP32:an skickar data med 3,3 V. Det fungerar med de flesta WS2812B-slingor, men om färgerna flimrar eller blir fel kan en nivåomvandlare som 74AHCT125 hjälpa.
+Prices are spot prices excluding VAT, grid fees and energy tax.
 
-## Koppling
+## Hardware
+
+- ESP32 dev board (classic ESP32, e.g. DevKitC / WROOM-32; C3, S2 and S3 are not supported by the prebuilt firmware)
+- WS2812B strip, 5 V, up to 300 LEDs, and a 5 V supply sized for it
+- 330–470 Ω resistor in the data line, 1000 µF capacitor across +5 V/GND at the strip input
 
 ```
-Nätaggregat 5 V          ESP32                 WS2812B-slinga (DIN-änden)
-  +5V ───────┬──────────── 5V / VIN
-             └──────────────────────────────── +5V
-  GND ───────┬──────────── GND
-             └──────────────────────────────── GND
-                           GPIO16 ── 330 Ω ─── DIN
-
-1000 µF över +5V och GND vid slingans ingång, minusbenet mot GND.
+5 V supply          ESP32                 WS2812B strip (DIN end)
+  +5V ─────┬──────── 5V / VIN
+           └───────────────────────────── +5V
+  GND ─────┬──────── GND
+           └───────────────────────────── GND
+                     GPIO16 ── 330 Ω ──── DIN
 ```
 
-- Slingan har en riktning. Anslut i den ände där pilarna pekar bort från dig, märkt DIN.
-- ESP32 och slinga måste ha gemensam jord.
-- Ha inte USB och nätaggregatets 5 V anslutna till ESP32:an samtidigt, om du inte vet att kortet tål det. Installera först via USB och koppla sedan in aggregatet.
-- För långa slingor, mata också in 5 V i andra änden så att färgerna inte blir rödare längre bort.
+The ESP32 and the strip must share ground. Don't power the ESP32 from USB and the 5 V supply at the same time unless your board allows it.
 
-## Installera
+## Updating
 
-1. Öppna [installationssidan](https://flysen.github.io/elpris-led/) i Chrome eller Edge på en dator.
-2. Anslut ESP32:an med USB, klicka på *Installera på ESP32* och välj porten.
-3. Välj att radera enheten vid första installationen.
+Use the install page again and choose *not* to erase to keep wifi and settings, or upload `elpris-led-<version>-esp32-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) over OTA.
 
-Syns ingen port behöver datorn en drivrutin för kortets USB-krets, oftast CP210x eller CH340.
+## Building
 
-## Första start
+Build with [arduino-cli](https://arduino.github.io/arduino-cli/) or the Arduino IDE (libraries: FastLED, ArduinoJson, WiFiManager). The data pin is `DATA_PIN` in `elpris_led/elpris_led.ino`. Run the logic tests with `make test`.
 
-1. Slingan pulserar blått och lampan startar ett eget wifi som heter **Elpris-LED-Config**. Anslut till det med mobilen.
-2. Öppnas ingen sida automatiskt, gå till `http://192.168.4.1`.
-3. Välj ditt wifi, skriv lösenordet och fyll i elområde, antal LED, nattläge och ljusstyrka. Spara.
-4. Lampan ansluter till ditt nätverk, hämtar tid och priser och börjar visa färger.
-5. Leta upp lampans IP-adress i routern och öppna den i webbläsaren. Där ändrar du inställningar senare. Sätt ett **OTA-lösenord** och ett **lösenord för konfigportalen** direkt. Innan dess är OTA avstängt och konfigportalen öppen.
+Pushing a tag like `v2.1` builds the firmware, creates a release and updates the install page.
 
-Om lampan inte hittar ditt wifi, till exempel efter ett strömavbrott då routern startar långsamt, öppnar den konfigportalen i tre minuter och startar sedan om för att försöka igen.
+## License
 
-## Vad färgerna betyder
-
-| Det du ser | Betydelse |
-|---|---|
-| Grönt till rött | Billigaste till dyraste priset i perioden som visas. Skalan är relativ, så även en billig dag har röda timmar. |
-| En lysdiod pulserar | Den aktuella kvarten. |
-| Hela slingan pulserar blått | Lampan väntar på tid eller priser. |
-| Hela slingan pulserar lila | Det finns inga priser för just nu och hämtningen misslyckas. |
-| De tre första lysdioderna blinkar magenta | Hämtningen misslyckas, men lampan visar sparade priser så länge de räcker. |
-
-Priserna är spotpriser exklusive moms, nätavgift och energiskatt.
-
-## Uppdatera
-
-Använd installationssidan igen och välj att *inte* radera, så behålls wifi och inställningar. Har du satt ett OTA-lösenord kan du också ladda upp filen `elpris-led-<version>-esp32-ota.bin` från [Releases](https://github.com/flysen/elpris-led/releases) trådlöst.
-
-## Bygga själv
-
-Vill du ändra koden, till exempel använda en annan datapinne, bygger du med [arduino-cli](https://arduino.github.io/arduino-cli/) eller Arduino IDE. Pinnen ställs in med `DATA_PIN` i `elpris_led/elpris_led.ino`.
-
-```bash
-arduino-cli config init
-arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-arduino-cli core update-index
-arduino-cli core install esp32:esp32
-arduino-cli lib install FastLED ArduinoJson WiFiManager
-arduino-cli compile --fqbn esp32:esp32:esp32 elpris_led
-arduino-cli upload  --fqbn esp32:esp32:esp32 -p /dev/ttyUSB0 elpris_led
-```
-
-Logiken för tider, slots och nattläge ligger i `elpris_led/elpris_logic.h` och testas på en vanlig dator:
-
-```bash
-make test
-```
-
-Varje push kompileras och testas automatiskt i GitHub Actions.
-
-## Släppa en ny version
-
-För den som underhåller repot. En versionstagg bygger firmwaren, skapar en release och uppdaterar installationssidan:
-
-```bash
-git tag v2.1
-git push origin v2.1
-```
-
-Engångsinställningar i repot innan första releasen:
-
-1. *Settings → Pages*: sätt *Source* till *GitHub Actions*.
-2. *Settings → Environments → github-pages*: lägg till en regel som tillåter taggar som matchar `v*`. Annars stoppas publiceringen eftersom den körs från en tagg.
-
-## Licens
-
-Se [LICENSE](LICENSE).
+See [LICENSE](LICENSE).

@@ -1,16 +1,16 @@
 // Elpris-LED v2
-// Kräver: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 Arduino core
+// Requires: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 Arduino core
 //
-// Ändringar jämfört med v1:
-//  - Tidszon konfigurerbar (webb + WiFiManager), sparas i flash
-//  - Antal LED konfigurerbart (max MAX_LEDS), 15-minuterspriser skalas till slingan
-//  - Få API-anrop: dagens priser 1 gång/dygn, morgondagens från 13:30 tills de finns
-//  - Exponentiell backoff + visuell felindikering
-//  - Cachad data används så länge den täcker aktuell tid ("offline" först när den tar slut)
-//  - Validering av inställningar, WiFiManager-fält visar sparade värden
-//  - Inga blockerande anrop i webbhanteraren
-//  - OTA- och portallösenord sätts i webbgränssnittet och sparas i flash (inga lösenord i koden)
-//  - Ren logik ligger i elpris_logic.h och testas med "make test" (se tests/)
+// Changes since v1:
+//  - Configurable time zone (web + WiFiManager), stored in flash
+//  - Configurable LED count (max MAX_LEDS), 15-minute prices are scaled to the strip
+//  - Few API calls: today's prices once a day, tomorrow's from 13:30 until they are available
+//  - Exponential backoff + visual error indication
+//  - Cached data is used as long as it covers the current time ("offline" only when it runs out)
+//  - Settings are validated, WiFiManager fields show stored values
+//  - No blocking calls in the web handler
+//  - OTA and portal passwords are set in the web UI and stored in flash (no passwords in the code)
+//  - Pure logic lives in elpris_logic.h and is tested with "make test" (see tests/)
 
 #include <WiFi.h>
 #include <WiFiManager.h>
@@ -24,33 +24,33 @@
 #include <WebServer.h>
 #include "elpris_logic.h"
 
-// ---------- HÅRDVARA ----------
+// ---------- HARDWARE ----------
 #define DATA_PIN     16
-#define MAX_LEDS     300       // övre gräns, själva antalet ställs in i webbgränssnittet
+#define MAX_LEDS     300       // upper limit, the actual count is set in the web UI
 #define LED_TYPE     WS2812B
 #define COLOR_ORDER  GRB
 
-// ---------- KONSTANTER ----------
-// SLOT_SEC och backoff-tiderna finns i elpris_logic.h
+// ---------- CONSTANTS ----------
+// SLOT_SEC and the backoff times are in elpris_logic.h
 const char* NTP_SERVER = "pool.ntp.org";
-const char* DEFAULT_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // Sverige
+const char* DEFAULT_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // Sweden
 
 const int SLOTS_PER_DAY   = 96;
-const int RING_SIZE       = 512;      // cache för ca 5 dygn av 15-minutersslots
+const int RING_SIZE       = 512;      // cache for about 5 days of 15-minute slots
 
-const int TOMORROW_FETCH_MIN = 13 * 60 + 30;  // börja leta efter morgondagens priser 13:30 lokal tid
-const int TOMORROW_ERROR_MIN = 16 * 60;       // först efter 16:00 räknas saknade morgondagspriser som fel
-const int STATUS_LEDS        = 3;             // antal LED som blinkar magenta vid hämtningsfel
+const int TOMORROW_FETCH_MIN = 13 * 60 + 30;  // start looking for tomorrow's prices at 13:30 local time
+const int TOMORROW_ERROR_MIN = 16 * 60;       // missing tomorrow prices count as an error only after 16:00
+const int STATUS_LEDS        = 3;             // number of LEDs that blink magenta on fetch errors
 
 const unsigned long NOT_PUBLISHED_RETRY_MS  = 15UL * 60UL * 1000UL;
 
-// ---------- LED-DATA ----------
+// ---------- LED DATA ----------
 CRGB leds[MAX_LEDS];
 CRGB ledColor[MAX_LEDS];
-int  winStartSlot = 0;     // första slot i visningsfönstret (lokal midnatt idag)
-int  winSlots     = SLOTS_PER_DAY;   // ett eller två dygn, räknat från verkliga midnatter (DST-säkert)
+int  winStartSlot = 0;     // first slot in the display window (local midnight today)
+int  winSlots     = SLOTS_PER_DAY;   // one or two days, counted from real midnights (DST-safe)
 
-// ---------- PRISCACHE (ringbuffer, nyckel = absolut 15-minutersslot sedan epoch) ----------
+// ---------- PRICE CACHE (ring buffer, key = absolute 15-minute slot since epoch) ----------
 int32_t slotId[RING_SIZE];
 float   slotPrice[RING_SIZE];
 
@@ -59,7 +59,7 @@ inline float getSlot(int32_t s)   { return slotPrice[s % RING_SIZE]; }
 inline void  putSlot(int32_t s, float p) { slotId[s % RING_SIZE] = s; slotPrice[s % RING_SIZE] = p; }
 void clearCache() { for (int i = 0; i < RING_SIZE; i++) slotId[i] = -1; }
 
-// ---------- INSTÄLLNINGAR ----------
+// ---------- SETTINGS ----------
 Preferences preferences;
 char cfgArea[5]  = "SE3";
 char cfgTz[64];
@@ -68,23 +68,23 @@ int  cfgNightEnd    = 6;
 int  cfgBrightDay   = 40;
 int  cfgBrightNight = 5;
 int  cfgNumLeds     = 100;
-char cfgOtaPw[33]   = "";   // tomt = OTA avstängt
-char cfgApPw[33]    = "";   // tomt = öppen konfigportal, annars minst 8 tecken
+char cfgOtaPw[33]   = "";   // empty = OTA disabled
+char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
 
-// WiFiManager-fält (värden fylls i från flash i setup)
-WiFiManagerParameter pArea  ("area",   "Elprisomrade (SE1-SE4)",            "", 5);
-WiFiManagerParameter pTz    ("tz",     "Tidszon (POSIX TZ-strang)",         "", 63);
-WiFiManagerParameter pNstart("nstart", "Nattborjan timme (0-23)",            "", 3);
-WiFiManagerParameter pNend  ("nend",   "Nattslut timme (0-23)",              "", 3);
-WiFiManagerParameter pBday  ("bday",   "Ljusstyrka dag (1-255)",             "", 4);
-WiFiManagerParameter pBnight("bnight", "Ljusstyrka natt (0-255)",            "", 4);
-WiFiManagerParameter pLeds  ("leds",   "Antal LED i slingan",                "", 4);
+// WiFiManager fields (values are filled in from flash in setup)
+WiFiManagerParameter pArea  ("area",   "Price area (SE1-SE4)",               "", 5);
+WiFiManagerParameter pTz    ("tz",     "Time zone (POSIX TZ string)",        "", 63);
+WiFiManagerParameter pNstart("nstart", "Night start hour (0-23)",            "", 3);
+WiFiManagerParameter pNend  ("nend",   "Night end hour (0-23)",              "", 3);
+WiFiManagerParameter pBday  ("bday",   "Day brightness (1-255)",             "", 4);
+WiFiManagerParameter pBnight("bnight", "Night brightness (0-255)",           "", 4);
+WiFiManagerParameter pLeds  ("leds",   "Number of LEDs in the strip",        "", 4);
 bool shouldSaveConfig = false;
 void saveConfigCallback() { shouldSaveConfig = true; }
 
 WebServer server(80);
 
-// ---------- STATUS ----------
+// ---------- STATE ----------
 bool         needRebuild   = true;
 int          lastMday      = -1;
 unsigned long nextAttemptMs = 0;
@@ -94,7 +94,7 @@ unsigned long restartAtMs   = 0;
 bool         otaActive     = false;
 
 // =====================================================================
-//  Inställningar: ladda / validera / spara
+//  Settings: load / validate / save
 // =====================================================================
 void sanitizeSettings() {
   for (int i = 0; cfgArea[i]; i++) cfgArea[i] = toupper(cfgArea[i]);
@@ -107,7 +107,7 @@ void sanitizeSettings() {
   cfgNumLeds     = constrain(cfgNumLeds, 1, MAX_LEDS);
 
   if (strlen(cfgTz) < 3) strlcpy(cfgTz, DEFAULT_TZ, sizeof(cfgTz));
-  if (strlen(cfgApPw) > 0 && strlen(cfgApPw) < 8) cfgApPw[0] = '\0';   // WPA2 kräver minst 8 tecken
+  if (strlen(cfgApPw) > 0 && strlen(cfgApPw) < 8) cfgApPw[0] = '\0';   // WPA2 requires at least 8 characters
 }
 
 void loadSettings() {
@@ -143,7 +143,7 @@ void applyTimezone() {
 }
 
 // =====================================================================
-//  Tidshjälp (daysFromCivil, parseIso och localMidnightSlot finns i elpris_logic.h)
+//  Time helpers (daysFromCivil, parseIso and localMidnightSlot are in elpris_logic.h)
 // =====================================================================
 bool dayCovered(int32_t startSlot) {
   return hasSlot(startSlot + 2) && hasSlot(startSlot + 50) && hasSlot(startSlot + 90);
@@ -161,7 +161,7 @@ String priceUrl(time_t now, int dayOffset) {
 }
 
 // =====================================================================
-//  Hämtning av priser
+//  Fetching prices
 // =====================================================================
 bool fetchDay(const String& url, int& code) {
   WiFiClientSecure client;
@@ -192,7 +192,7 @@ bool fetchDay(const String& url, int& code) {
     if (!ts) continue;
     time_t a, b;
     if (!parseIso(ts, a)) continue;
-    if (!te || !parseIso(te, b)) b = a;   // priceSlots antar då en timme
+    if (!te || !parseIso(te, b)) b = a;   // priceSlots then assumes one hour
     float p = o["SEK_per_kWh"] | 0.0f;
     int32_t s0, s1;
     priceSlots(a, b, s0, s1);
@@ -224,29 +224,29 @@ void serviceFetch(const struct tm& t, time_t now) {
     needRebuild = true;
     int32_t startSlot = dayOffset ? tomorrowSlot : todaySlot;
     nextAttemptMs = ms + (dayCovered(startSlot) ? 1000UL : NOT_PUBLISHED_RETRY_MS);
-    Serial.printf("Priser hämtade (dag +%d)\n", dayOffset);
+    Serial.printf("Prices fetched (day +%d)\n", dayOffset);
   } else if (dayOffset == 1 && code == 404) {
     nextAttemptMs = ms + NOT_PUBLISHED_RETRY_MS;
     fetchFailing = (minutes >= TOMORROW_ERROR_MIN);
-    Serial.println("Morgondagens priser inte publicerade än");
+    Serial.println("Tomorrow's prices not published yet");
   } else {
     failStreak++;
     unsigned long d = backoffMs(failStreak);
     nextAttemptMs = ms + d;
     fetchFailing = (dayOffset == 0) || (minutes >= TOMORROW_ERROR_MIN);
-    Serial.printf("Hämtning misslyckades (kod %d), nytt försök om %lu s\n", code, d / 1000);
+    Serial.printf("Fetch failed (code %d), retrying in %lu s\n", code, d / 1000);
   }
 }
 
 // =====================================================================
-//  Bygg färgerna för slingan
+//  Build the colors for the strip
 // =====================================================================
 inline void ledRange(int i, int& s0, int& s1) {
   ledSlotRange(i, winSlots, cfgNumLeds, s0, s1);
 }
 
 void rebuildTimeline(time_t now) {
-  // Fönstret räknas från verkliga midnatter så att 23- och 25-timmarsdygn (sommartid) blir rätt
+  // The window is counted from real midnights so 23- and 25-hour days (DST) come out right
   winStartSlot = localMidnightSlot(now, 0);
   int32_t tomorrowStart = localMidnightSlot(now, 1);
   int32_t dayAfterStart = localMidnightSlot(now, 2);
@@ -282,7 +282,7 @@ void rebuildTimeline(time_t now) {
 }
 
 // =====================================================================
-//  Webbgränssnitt
+//  Web interface
 // =====================================================================
 String htmlEscape(const String& s) {
   String o;
@@ -303,53 +303,53 @@ String htmlEscape(const String& s) {
 void handleRoot() {
   time_t now = time(nullptr);
   int32_t ns = (int32_t)(now / SLOT_SEC);
-  String priceTxt = (now > 1700000000 && hasSlot(ns)) ? String(getSlot(ns), 2) + " SEK/kWh" : String("saknas");
-  String status = fetchFailing ? "Kan inte hämta priser (försöker igen automatiskt)" : "OK";
-  String otaTxt = otaActive ? "Aktiv" : "Av (sätt ett OTA-lösenord nedan)";
+  String priceTxt = (now > 1700000000 && hasSlot(ns)) ? String(getSlot(ns), 2) + " SEK/kWh" : String("unavailable");
+  String status = fetchFailing ? "Cannot fetch prices (retrying automatically)" : "OK";
+  String otaTxt = otaActive ? "Active" : "Off (set an OTA password below)";
 
   String html;
   html.reserve(5500);
-  html += "<html lang='sv'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
+  html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
   html += "button{width:100%;padding:12px;background:#4CAF50;color:white;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;}";
   html += ".card{background:#1e1e1e;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;}small{color:#999;}</style></head><body>";
 
   html += "<h2>Elpris LED</h2><div class='card'><h3>Live Status</h3>";
-  html += "<p><strong>Pris just nu:</strong> " + priceTxt + "<br><small>Spotpris exkl. moms, nät och skatt</small></p>";
-  html += "<p><strong>Område:</strong> " + String(cfgArea) + "</p>";
+  html += "<p><strong>Current price:</strong> " + priceTxt + "<br><small>Spot price excl. VAT, grid fees and tax</small></p>";
+  html += "<p><strong>Area:</strong> " + String(cfgArea) + "</p>";
   html += "<p><strong>Status:</strong> " + status + "</p>";
   html += "<p><strong>OTA:</strong> " + otaTxt + "</p></div>";
 
-  html += "<div class='card'><h3>Inställningar</h3><form action='/save' method='POST'>";
-  html += "<label>Elprisområde:</label><select name='area'>";
+  html += "<div class='card'><h3>Settings</h3><form action='/save' method='POST'>";
+  html += "<label>Price area:</label><select name='area'>";
   const char* areas[] = {"SE1", "SE2", "SE3", "SE4"};
   for (int i = 0; i < 4; i++) {
     html += "<option value='" + String(areas[i]) + "'" + (String(cfgArea) == areas[i] ? " selected" : "") + ">" + areas[i] + "</option>";
   }
   html += "</select>";
 
-  html += "<label>Antal LED (ändring startar om enheten):</label><input type='number' name='leds' min='1' max='" + String(MAX_LEDS) + "' value='" + String(cfgNumLeds) + "'>";
+  html += "<label>Number of LEDs (changing it restarts the device):</label><input type='number' name='leds' min='1' max='" + String(MAX_LEDS) + "' value='" + String(cfgNumLeds) + "'>";
 
-  html += "<label>Tidszon (förval):</label><select onchange=\"if(this.value)document.getElementById('tz').value=this.value\">";
-  html += "<option value=''>Välj...</option>";
-  html += "<option value='CET-1CEST,M3.5.0,M10.5.0/3'>Sverige / Mellaneuropa</option>";
-  html += "<option value='EET-2EEST,M3.5.0/3,M10.5.0/4'>Finland / Baltikum</option>";
-  html += "<option value='GMT0BST,M3.5.0/1,M10.5.0'>Storbritannien</option>";
+  html += "<label>Time zone (presets):</label><select onchange=\"if(this.value)document.getElementById('tz').value=this.value\">";
+  html += "<option value=''>Choose...</option>";
+  html += "<option value='CET-1CEST,M3.5.0,M10.5.0/3'>Sweden / Central Europe</option>";
+  html += "<option value='EET-2EEST,M3.5.0/3,M10.5.0/4'>Finland / Baltics</option>";
+  html += "<option value='GMT0BST,M3.5.0/1,M10.5.0'>United Kingdom</option>";
   html += "<option value='UTC0'>UTC</option></select>";
-  html += "<label>Tidszon (POSIX TZ-sträng):</label><input type='text' id='tz' name='tz' maxlength='63' value='" + htmlEscape(String(cfgTz)) + "'>";
+  html += "<label>Time zone (POSIX TZ string):</label><input type='text' id='tz' name='tz' maxlength='63' value='" + htmlEscape(String(cfgTz)) + "'>";
 
-  html += "<label>Nattläge Start (timme 0-23):</label><input type='number' name='nstart' min='0' max='23' value='" + String(cfgNightStart) + "'>";
-  html += "<label>Nattläge Slut (timme 0-23):</label><input type='number' name='nend' min='0' max='23' value='" + String(cfgNightEnd) + "'>";
-  html += "<label>Ljusstyrka Dag (1-255):</label><input type='number' name='bday' min='1' max='255' value='" + String(cfgBrightDay) + "'>";
-  html += "<label>Ljusstyrka Natt (0-255):</label><input type='number' name='bnight' min='0' max='255' value='" + String(cfgBrightNight) + "'>";
+  html += "<label>Night mode start (hour 0-23):</label><input type='number' name='nstart' min='0' max='23' value='" + String(cfgNightStart) + "'>";
+  html += "<label>Night mode end (hour 0-23):</label><input type='number' name='nend' min='0' max='23' value='" + String(cfgNightEnd) + "'>";
+  html += "<label>Day brightness (1-255):</label><input type='number' name='bday' min='1' max='255' value='" + String(cfgBrightDay) + "'>";
+  html += "<label>Night brightness (0-255):</label><input type='number' name='bnight' min='0' max='255' value='" + String(cfgBrightNight) + "'>";
 
-  html += "<label>OTA-lösenord (tomt = oförändrat, ändring startar om):</label>";
-  html += "<input type='password' name='otapw' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgOtaPw) ? "(satt)" : "(inte satt)") + "'>";
-  html += "<label>Lösenord för konfigportalen, minst 8 tecken (tomt = oförändrat):</label>";
-  html += "<input type='password' name='appw' minlength='8' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgApPw) ? "(satt)" : "(öppen portal)") + "'>";
+  html += "<label>OTA password (empty = unchanged, changing it restarts the device):</label>";
+  html += "<input type='password' name='otapw' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgOtaPw) ? "(set)" : "(not set)") + "'>";
+  html += "<label>Config portal password, at least 8 characters (empty = unchanged):</label>";
+  html += "<input type='password' name='appw' minlength='8' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgApPw) ? "(set)" : "(open portal)") + "'>";
 
-  html += "<button type='submit'>Spara ändringar</button></form></div></body></html>";
+  html += "<button type='submit'>Save changes</button></form></div></body></html>";
 
   server.send(200, "text/html", html);
 }
@@ -374,7 +374,7 @@ void handleSave() {
     if (pw != cfgOtaPw) { pw.toCharArray(cfgOtaPw, sizeof(cfgOtaPw)); otaPwChanged = true; }
   }
   if (server.hasArg("appw") && server.arg("appw").length() >= 8) {
-    server.arg("appw").toCharArray(cfgApPw, sizeof(cfgApPw));   // gäller nästa gång portalen öppnas
+    server.arg("appw").toCharArray(cfgApPw, sizeof(cfgApPw));   // takes effect the next time the portal opens
   }
 
   sanitizeSettings();
@@ -426,12 +426,12 @@ void setup() {
   wm.addParameter(&pBnight);
   wm.addParameter(&pLeds);
   wm.setSaveConfigCallback(saveConfigCallback);
-  wm.setConnectTimeout(30);         // försök ansluta till sparat nät i 30 s
-  wm.setConfigPortalTimeout(180);   // stäng portalen efter 3 min och starta om, så att wifi provas igen
+  wm.setConnectTimeout(30);         // try the saved network for 30 s
+  wm.setConfigPortalTimeout(180);   // close the portal after 3 min and restart, so wifi is tried again
 
-  const char* apPw = strlen(cfgApPw) ? cfgApPw : nullptr;   // inget lösenord satt = öppen portal
+  const char* apPw = strlen(cfgApPw) ? cfgApPw : nullptr;   // no password set = open portal
   if (!wm.autoConnect("Elpris-LED-Config", apPw)) {
-    Serial.println("Kunde inte ansluta, startar om...");
+    Serial.println("Could not connect, restarting...");
     delay(3000);
     ESP.restart();
   }
@@ -450,17 +450,17 @@ void setup() {
     if (oldLeds != cfgNumLeds) { delay(500); ESP.restart(); }
   }
 
-  Serial.print("IP-adress: ");
+  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
-  // OTA startas bara när ett lösenord är satt i webbgränssnittet
+  // OTA only starts when a password has been set in the web UI
   if (strlen(cfgOtaPw)) {
     ArduinoOTA.setHostname("ElprisLED");
     ArduinoOTA.setPassword(cfgOtaPw);
     ArduinoOTA.begin();
     otaActive = true;
   } else {
-    Serial.println("OTA av: sätt ett OTA-lösenord i webbgränssnittet");
+    Serial.println("OTA off: set an OTA password in the web UI");
   }
 
   server.on("/", HTTP_GET, handleRoot);

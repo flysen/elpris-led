@@ -122,6 +122,20 @@ static void testValidArea() {
   checkTrue("validArea: too long invalid", !validArea("SE33"));
 }
 
+static void testVersions() {
+  checkTrue("isNewerVersion: v2.1 > v2.0", isNewerVersion("v2.1", "v2.0"));
+  checkTrue("isNewerVersion: v2.10 > v2.9", isNewerVersion("v2.10", "v2.9"));
+  checkTrue("isNewerVersion: v3.0 > v2.9.9", isNewerVersion("v3.0", "v2.9.9"));
+  checkTrue("isNewerVersion: v2.0.1 > v2.0", isNewerVersion("v2.0.1", "v2.0"));
+  checkTrue("isNewerVersion: 2.1 without v > v2.0", isNewerVersion("2.1", "v2.0"));
+  checkTrue("isNewerVersion: same version is not newer", !isNewerVersion("v2.0", "v2.0"));
+  checkTrue("isNewerVersion: v2.0 equals v2.0.0", !isNewerVersion("v2.0.0", "v2.0"));
+  checkTrue("isNewerVersion: older is not newer", !isNewerVersion("v1.9", "v2.0"));
+  checkTrue("isNewerVersion: dev build is never replaced", !isNewerVersion("v9.0", "dev"));
+  checkTrue("isNewerVersion: garbage is never newer", !isNewerVersion("latest", "v2.0"));
+  checkTrue("isNewerVersion: null is never newer", !isNewerVersion(nullptr, "v2.0"));
+}
+
 int main() {
   setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);   // same as the lamp's default
   tzset();
@@ -134,6 +148,7 @@ int main() {
   testIsNightHour();
   testBackoff();
   testValidArea();
+  testVersions();
 
   printf("\n%d OK, %d FAIL\n", passed, failed);
   return failed ? 1 : 0;

@@ -78,3 +78,24 @@ inline unsigned long backoffMs(int failStreak) {
 inline bool validArea(const char* a) {
   return a[0] == 'S' && a[1] == 'E' && a[2] >= '1' && a[2] <= '4' && a[3] == '\0';
 }
+
+// Parses a version like "v2.1" or "2.1.3" into major, minor, patch. Missing parts are 0.
+// Returns false if it doesn't start with a number (e.g. "dev").
+inline bool parseVersion(const char* s, int v[3]) {
+  v[0] = v[1] = v[2] = 0;
+  if (!s) return false;
+  if (*s == 'v' || *s == 'V') s++;
+  if (*s < '0' || *s > '9') return false;
+  return sscanf(s, "%d.%d.%d", &v[0], &v[1], &v[2]) >= 1;
+}
+
+// True if candidate is a higher version than current. Unparseable versions never count as newer,
+// and a current version that can't be parsed (a local "dev" build) is never replaced.
+inline bool isNewerVersion(const char* candidate, const char* current) {
+  int a[3], b[3];
+  if (!parseVersion(candidate, a) || !parseVersion(current, b)) return false;
+  for (int i = 0; i < 3; i++) {
+    if (a[i] != b[i]) return a[i] > b[i];
+  }
+  return false;
+}

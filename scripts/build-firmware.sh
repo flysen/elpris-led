@@ -10,6 +10,8 @@ VERSION="${1:?usage: $0 <version>}"
 FQBN="esp32:esp32:esp32:PartitionScheme=min_spiffs"
 OUT="build-out"
 APP_MAX=1966080   # app partition size in the min_spiffs partition table (one OTA slot)
+SIZE_WARN_PCT=85  # warn above this share of the OTA slot
+SIZE_FAIL_PCT=95  # fail above this share, to keep a safety margin before updates break
 
 cd "$(dirname "$0")/.."
 rm -rf "$OUT" site dist
@@ -27,14 +29,38 @@ done
 BOOT_APP0=$(find ~/.arduino15/packages/esp32/hardware -name boot_app0.bin -print -quit)
 test -n "$BOOT_APP0" || { echo "::error::boot_app0.bin not found"; exit 1; }
 
-# The app must fit in an OTA slot, otherwise automatic updates fail
+# The app must fit in an OTA slot with margin, otherwise automatic updates will soon break
 SIZE=$(stat -c %s "$B.bin")
-echo "App size: $SIZE of $APP_MAX bytes ($((SIZE * 100 / APP_MAX)) %)"
-if [ "$SIZE" -gt "$APP_MAX" ]; then
-  echo "::error::The app does not fit in the OTA partition"; exit 1
+PCT=$((SIZE * 100 / APP_MAX))
+FREE=$((APP_MAX - SIZE))
+if [ "$PCT" -ge "$SIZE_FAIL_PCT" ]; then
+  STATUS="❌ over the ${SIZE_FAIL_PCT} % limit"
+elif [ "$PCT" -ge "$SIZE_WARN_PCT" ]; then
+  STATUS="⚠️ above ${SIZE_WARN_PCT} %"
+else
+  STATUS="✅ OK"
 fi
-if [ "$SIZE" -gt $((APP_MAX * 95 / 100)) ]; then
-  echo "::warning::The app uses more than 95 % of the OTA partition"
+echo "App size: $SIZE of $APP_MAX bytes ($PCT %), $FREE bytes free"
+
+# Show the size on the run's summary page, so nobody has to dig in the log
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  {
+    echo "### Firmware ${VERSION}"
+    echo ""
+    echo "| App size | OTA slot | Used | Free | Status |"
+    echo "|---:|---:|---:|---:|---|"
+    echo "| $SIZE bytes | $APP_MAX bytes | $PCT % | $FREE bytes | $STATUS |"
+    echo ""
+    echo "Warning above ${SIZE_WARN_PCT} %, failure at ${SIZE_FAIL_PCT} % or more."
+  } >> "$GITHUB_STEP_SUMMARY"
+fi
+
+if [ "$PCT" -ge "$SIZE_FAIL_PCT" ]; then
+  echo "::error::The app uses $PCT % of the OTA partition (limit ${SIZE_FAIL_PCT} %). Make it smaller before merging."
+  exit 1
+fi
+if [ "$PCT" -ge "$SIZE_WARN_PCT" ]; then
+  echo "::warning::The app uses $PCT % of the OTA partition. The build fails at ${SIZE_FAIL_PCT} %."
 fi
 
 # The version must be inside the binary, or lamps would keep installing the same release

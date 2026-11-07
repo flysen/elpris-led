@@ -1,2 +1,6 @@
 tests/test_logic
+tests/test_logic_san
 elpris_led/version.h
+build-out/
+site/
+dist/

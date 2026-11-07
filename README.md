@@ -12,6 +12,7 @@ You don't need to compile anything. Every release is built and tested automatica
    pip install esptool
    esptool.py --chip esp32 write_flash 0x0 elpris-led-<version>-esp32-full.bin
    ```
+   Each release has a `SHA256SUMS` file if you want to verify the download.
 3. **Build it yourself:** see [Building from source](#building-from-source). Only needed if you want to change the code.
 
 If no USB port shows up, the computer needs a driver for the board's USB chip, usually CP210x or CH340. Some USB cables only charge; use one that carries data.
@@ -68,49 +69,62 @@ The ESP32 and the strip must share ground. Connect the strip at the end where th
 - **Install page:** run it again and choose *not* to erase. Wifi and settings are kept.
 - **Arduino OTA:** if you've set an OTA password, upload `elpris-led-<version>-esp32-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with the Arduino IDE or `espota.py`.
 
-Builds you compile yourself report version `dev` and never update automatically, so your own changes aren't overwritten.
+Builds you compile yourself, and CI builds, report version `dev` and never update automatically, so your own changes aren't overwritten. Flash a release to get back on automatic updates.
 
 ## Building from source
 
-Only needed if you want to change the code, for example to use another data pin (`DATA_PIN` in `elpris_led/elpris_led.ino`). With [arduino-cli](https://arduino.github.io/arduino-cli/):
+Only needed if you want to change the code, for example to use another data pin (`DATA_PIN` in `elpris_led/elpris_led.ino`). With [arduino-cli](https://arduino.github.io/arduino-cli/) installed:
 
 ```bash
-arduino-cli config init
-arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-arduino-cli core update-index
-arduino-cli core install esp32:esp32
-arduino-cli lib install FastLED ArduinoJson WiFiManager
-arduino-cli compile --fqbn esp32:esp32:esp32 elpris_led
-arduino-cli upload  --fqbn esp32:esp32:esp32 -p /dev/ttyUSB0 elpris_led
+bash scripts/arduino-deps.sh          # ESP32 core and libraries at the pinned versions
+bash scripts/build-firmware.sh dev    # build, check and package into dist/ and site/
+arduino-cli upload --fqbn esp32:esp32:esp32 -p /dev/ttyUSB0 --input-dir build-out elpris_led
 ```
 
-In the Arduino IDE: add the board URL above under *Preferences*, install *esp32* in the Boards Manager and FastLED, ArduinoJson and WiFiManager (by tzapu) in the Library Manager, then open `elpris_led/elpris_led.ino`.
+In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` under *Preferences*, install *esp32* in the Boards Manager and FastLED, ArduinoJson and WiFiManager (by tzapu) in the Library Manager, then open `elpris_led/elpris_led.ino`. Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
 
-The time, slot, night mode and version logic is in `elpris_led/elpris_logic.h` and is tested on a regular computer with:
+The time, slot, night mode and version logic is in `elpris_led/elpris_logic.h` and is tested on a regular computer:
 
 ```bash
-make test
+make test            # unit tests
+make test-sanitize   # the same tests with AddressSanitizer and UndefinedBehaviorSanitizer
 ```
 
-Every push and pull request is compiled and tested in GitHub Actions.
+### Continuous integration
+
+Every pull request and every push to `main` runs:
+
+- **tests:** the unit tests, normally and with sanitizers.
+- **lint:** shellcheck on the build scripts.
+- **firmware:** the same build and packaging as a release, with pinned dependencies. It checks that the app fits in the OTA partition, that the version is in the binary and that the install page manifest is valid. The firmware is attached to the run for 14 days, so you can try a pull request on your own lamp before releasing it.
+
+Dependabot opens pull requests when the GitHub Actions used here get new versions. The ESP32 core and library versions are bumped by hand in `scripts/arduino-deps.sh`.
 
 ## Releases (for maintainers)
 
-Pushing a version tag runs the tests, builds the firmware with that version number, publishes a release with `-full.bin` and `-ota.bin`, and updates the install page. Lamps in the field pick up the new version from the install page within a day.
+Pushing a version tag checks the tag, runs the tests, builds the firmware with that version number, publishes a release with `-full.bin`, `-ota.bin` and `SHA256SUMS`, and updates the install page. Lamps in the field pick up the new version from the install page within a day.
 
 ```bash
 git tag v2.1
 git push origin v2.1
 ```
 
-Or in the browser: *Releases → Draft a new release*, type a new tag and publish.
+Or in the browser: *Releases → Draft a new release*, type a new tag, choose `main` and publish.
 
-Use tags like `v2.1` or `v2.1.3`, and always higher than the previous release; lamps only install versions that are newer than what they run.
+The release stops before anything is published if:
+
+- the tag isn't `v2.1`, `v2.1.3` or `v2.1-rc1`,
+- the tagged commit isn't on `main`,
+- a stable tag isn't higher than the previous stable release (lamps would ignore it),
+- any test or build check fails.
+
+**Release candidates** (`v2.1-rc1`) are published as pre-releases only. They don't update the install page and lamps never install them automatically. Flash the `-ota.bin` or `-full.bin` on your own lamp, and when it works, tag `v2.1` on the same commit. A lamp running `v2.1-rc1` moves on to `v2.1` by itself.
 
 One-time repository setup before the first release:
 
 1. *Settings → Pages*: set *Source* to *GitHub Actions*.
 2. *Settings → Environments → github-pages*: allow tags matching `v*` under deployment branches and tags. Otherwise the deploy is blocked because it runs from a tag.
+3. *Settings → Rules → Rulesets*: protect `main` and require the CI checks *tests*, *lint* and *firmware* to pass before merging.
 
 ## License
 

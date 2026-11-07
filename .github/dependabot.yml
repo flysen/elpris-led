@@ -1,0 +1,10 @@
+# Opens pull requests when the GitHub Actions used in the workflows get new versions,
+# so deprecations (like the Node.js 20 one) are handled before they break the build.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

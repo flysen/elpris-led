@@ -48,7 +48,7 @@ Prices are spot prices excluding VAT, grid fees and energy tax.
 
 ## Hardware
 
-- ESP32 dev board (classic ESP32, e.g. DevKitC / WROOM-32; C3, S2 and S3 are not supported by the prebuilt firmware)
+- ESP32 dev board (classic ESP32 with 4 MB flash, e.g. DevKitC / WROOM-32; C3, S2 and S3 are not supported by the prebuilt firmware)
 - WS2812B strip, 5 V, up to 300 LEDs, and a 5 V supply sized for it (up to 60 mA per LED at full white)
 - 330–470 Ω resistor in the data line, 1000 µF capacitor across +5 V/GND at the strip input
 
@@ -78,10 +78,10 @@ Only needed if you want to change the code, for example to use another data pin 
 ```bash
 bash scripts/arduino-deps.sh          # ESP32 core and libraries at the pinned versions
 bash scripts/build-firmware.sh dev    # build, check and package into dist/ and site/
-arduino-cli upload --fqbn esp32:esp32:esp32 -p /dev/ttyUSB0 --input-dir build-out elpris_led
+arduino-cli upload --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs -p /dev/ttyUSB0 --input-dir build-out elpris_led
 ```
 
-In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` under *Preferences*, install *esp32* in the Boards Manager and FastLED, ArduinoJson and WiFiManager (by tzapu) in the Library Manager, then open `elpris_led/elpris_led.ino`. Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
+In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` under *Preferences*, install *esp32* in the Boards Manager and FastLED, ArduinoJson and WiFiManager (by tzapu) in the Library Manager, then open `elpris_led/elpris_led.ino`. Choose the board *ESP32 Dev Module* and under *Tools → Partition Scheme* choose **Minimal SPIFFS (1.9MB APP with OTA)**; the firmware doesn't fit the default scheme with room for OTA. Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
 
 The time, slot, night mode and version logic is in `elpris_led/elpris_logic.h` and is tested on a regular computer:
 
@@ -119,6 +119,8 @@ The release stops before anything is published if:
 - any test or build check fails.
 
 **Release candidates** (`v2.1-rc1`) are published as pre-releases only. They don't update the install page and lamps never install them automatically. Flash the `-ota.bin` or `-full.bin` on your own lamp, and when it works, tag `v2.1` on the same commit. A lamp running `v2.1-rc1` moves on to `v2.1` by itself.
+
+**Partition table:** the firmware uses the *Minimal SPIFFS* scheme (two 1.9 MB app slots). Automatic updates only replace the app, never the partition table, so this must not change in a release. If it ever has to, lamps need a USB install from the install page.
 
 One-time repository setup before the first release:
 

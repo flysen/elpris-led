@@ -33,6 +33,12 @@ jobs:
           arduino-cli core install esp32:esp32
           arduino-cli lib install FastLED ArduinoJson WiFiManager
 
+      - name: Set firmware version
+        run: |
+          # The lamp compares this with manifest.json on the install page to find new releases
+          echo "#define FW_VERSION \"${GITHUB_REF_NAME}\"" > elpris_led/version.h
+          cat elpris_led/version.h
+
       - name: Build firmware
         run: arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir build-out elpris_led
 
@@ -43,7 +49,8 @@ jobs:
           BOOT_APP0=$(find ~/.arduino15/packages/esp32/hardware -name boot_app0.bin -print -quit)
           test -n "$BOOT_APP0"
 
-          # Install page: separate parts, so wifi and settings are kept on update
+          # Install page: separate parts, so wifi and settings are kept on update.
+          # firmware/elpris-led.bin is also what the lamp downloads for automatic updates.
           mkdir -p site/firmware dist
           cp -r docs/. site/
           cp "$B.bootloader.bin" site/firmware/bootloader.bin

@@ -29,6 +29,7 @@ If no USB port shows up, the computer needs a driver for the board's USB chip, u
 - The LED for the current 15 minutes pulses.
 - The color scale is relative to the period shown, so even a cheap day has red hours.
 - Price area, number of LEDs (up to 300), time zone, night mode hours and day/night brightness are set in a web UI.
+- Updates itself: new releases are found and installed automatically.
 - Few API calls; cached prices are used if fetching fails, with automatic retries.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
 - Handles daylight saving time correctly (23- and 25-hour days).
@@ -40,6 +41,7 @@ If no USB port shows up, the computer needs a driver for the board's USB chip, u
 | Whole strip pulses blue | Waiting for time or prices |
 | Whole strip pulses purple | No prices for now and fetching fails |
 | First three LEDs blink magenta | Fetching fails, cached prices still shown |
+| Dim cyan dots | Installing an update, the lamp restarts when done |
 
 Prices are spot prices excluding VAT, grid fees and energy tax.
 
@@ -62,8 +64,11 @@ The ESP32 and the strip must share ground. Connect the strip at the end where th
 
 ## Updating
 
+- **Automatic (default):** the lamp checks for a new release two minutes after start and then once a day, and installs it by itself. Wifi and settings are kept. You can turn this off, or press *Check for updates now*, in the lamp's web UI. The current and latest version are shown there too.
 - **Install page:** run it again and choose *not* to erase. Wifi and settings are kept.
-- **Over the air:** if you've set an OTA password, upload `elpris-led-<version>-esp32-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with the Arduino IDE or `espota.py`.
+- **Arduino OTA:** if you've set an OTA password, upload `elpris-led-<version>-esp32-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with the Arduino IDE or `espota.py`.
+
+Builds you compile yourself report version `dev` and never update automatically, so your own changes aren't overwritten.
 
 ## Building from source
 
@@ -81,7 +86,7 @@ arduino-cli upload  --fqbn esp32:esp32:esp32 -p /dev/ttyUSB0 elpris_led
 
 In the Arduino IDE: add the board URL above under *Preferences*, install *esp32* in the Boards Manager and FastLED, ArduinoJson and WiFiManager (by tzapu) in the Library Manager, then open `elpris_led/elpris_led.ino`.
 
-The time, slot and night mode logic is in `elpris_led/elpris_logic.h` and is tested on a regular computer with:
+The time, slot, night mode and version logic is in `elpris_led/elpris_logic.h` and is tested on a regular computer with:
 
 ```bash
 make test
@@ -91,12 +96,16 @@ Every push and pull request is compiled and tested in GitHub Actions.
 
 ## Releases (for maintainers)
 
-Pushing a version tag runs the tests, builds the firmware, publishes a release with `-full.bin` and `-ota.bin`, and updates the install page:
+Pushing a version tag runs the tests, builds the firmware with that version number, publishes a release with `-full.bin` and `-ota.bin`, and updates the install page. Lamps in the field pick up the new version from the install page within a day.
 
 ```bash
-git tag v2.0
-git push origin v2.0
+git tag v2.1
+git push origin v2.1
 ```
+
+Or in the browser: *Releases → Draft a new release*, type a new tag and publish.
+
+Use tags like `v2.1` or `v2.1.3`, and always higher than the previous release; lamps only install versions that are newer than what they run.
 
 One-time repository setup before the first release:
 

@@ -1,6 +1,8 @@
 name: Release
 
 # Runs when a version tag is pushed, e.g.: git tag v2.1 && git push origin v2.1
+# Stable tags (v2.1) are installed by lamps automatically. Release candidates (v2.1-rc1)
+# are published as pre-releases only, for testing on your own lamp first.
 on:
   push:
     tags: ['v*']
@@ -17,91 +19,53 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    outputs:
+      prerelease: ${{ steps.tag.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # full history and tags for the tag checks
 
-      - name: Run tests
-        run: make test
+      - name: Check tag
+        id: tag
+        run: |
+          bash scripts/check-release-tag.sh "$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Unit tests
+        run: make test && make test-sanitize
 
       - uses: arduino/setup-arduino-cli@v2
 
-      - name: Install ESP32 core and libraries
-        run: |
-          arduino-cli config init
-          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
-          arduino-cli core update-index
-          arduino-cli core install esp32:esp32
-          arduino-cli lib install FastLED ArduinoJson WiFiManager
+      - name: Install pinned ESP32 core and libraries
+        run: bash scripts/arduino-deps.sh
 
-      - name: Set firmware version
-        run: |
-          # The lamp compares this with manifest.json on the install page to find new releases
-          echo "#define FW_VERSION \"${GITHUB_REF_NAME}\"" > elpris_led/version.h
-          cat elpris_led/version.h
-
-      - name: Build firmware
-        run: arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir build-out elpris_led
-
-      - name: Prepare release and install page
-        run: |
-          VERSION="${GITHUB_REF_NAME}"
-          B=build-out/elpris_led.ino
-          BOOT_APP0=$(find ~/.arduino15/packages/esp32/hardware -name boot_app0.bin -print -quit)
-          test -n "$BOOT_APP0"
-
-          # Install page: separate parts, so wifi and settings are kept on update.
-          # firmware/elpris-led.bin is also what the lamp downloads for automatic updates.
-          mkdir -p site/firmware dist
-          cp -r docs/. site/
-          cp "$B.bootloader.bin" site/firmware/bootloader.bin
-          cp "$B.partitions.bin" site/firmware/partitions.bin
-          cp "$BOOT_APP0"        site/firmware/boot_app0.bin
-          cp "$B.bin"            site/firmware/elpris-led.bin
-
-          cat > site/manifest.json << EOF
-          {
-            "name": "Elpris-LED",
-            "version": "${VERSION}",
-            "new_install_prompt_erase": true,
-            "builds": [
-              {
-                "chipFamily": "ESP32",
-                "parts": [
-                  { "path": "firmware/bootloader.bin", "offset": 4096 },
-                  { "path": "firmware/partitions.bin", "offset": 32768 },
-                  { "path": "firmware/boot_app0.bin", "offset": 57344 },
-                  { "path": "firmware/elpris-led.bin", "offset": 65536 }
-                ]
-              }
-            ]
-          }
-          EOF
-
-          # Release files: a full image for esptool and a plain app file for OTA
-          MERGED="$B.merged.bin"
-          if [ ! -f "$MERGED" ]; then
-            pip install esptool==4.8.1
-            esptool.py --chip esp32 merge_bin -o "$MERGED" \
-              0x1000 "$B.bootloader.bin" \
-              0x8000 "$B.partitions.bin" \
-              0xe000 "$BOOT_APP0" \
-              0x10000 "$B.bin"
-          fi
-          cp "$MERGED" "dist/elpris-led-${VERSION}-esp32-full.bin"
-          cp "$B.bin"  "dist/elpris-led-${VERSION}-esp32-ota.bin"
+      - name: Build and package firmware
+        run: bash scripts/build-firmware.sh "$GITHUB_REF_NAME"
 
       - name: Create release
         uses: softprops/action-gh-release@v3
         with:
-          files: dist/*.bin
+          files: |
+            dist/*.bin
+            dist/SHA256SUMS
+          prerelease: ${{ steps.tag.outputs.prerelease == 'true' }}
           generate_release_notes: true
 
-      - uses: actions/upload-pages-artifact@v5
+      - name: Upload install page
+        if: steps.tag.outputs.prerelease != 'true'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: site
 
+  # Only stable releases reach the install page, and with it every lamp's automatic updates
   deploy:
     needs: build
+    if: needs.build.outputs.prerelease != 'true'
     runs-on: ubuntu-24.04
     environment:
       name: github-pages

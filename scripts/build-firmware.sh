@@ -5,9 +5,11 @@
 set -euo pipefail
 
 VERSION="${1:?usage: $0 <version>}"
-FQBN="esp32:esp32:esp32"
+# Minimal SPIFFS partition scheme: two 1.9 MB app slots for OTA (the default only has 1.25 MB).
+# The NVS partition with wifi and settings is at the same place in both schemes.
+FQBN="esp32:esp32:esp32:PartitionScheme=min_spiffs"
 OUT="build-out"
-APP_MAX=1310720   # app partition size in the default ESP32 partition table (one OTA slot)
+APP_MAX=1966080   # app partition size in the min_spiffs partition table (one OTA slot)
 
 cd "$(dirname "$0")/.."
 rm -rf "$OUT" site dist

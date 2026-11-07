@@ -122,6 +122,25 @@ static void testValidArea() {
   checkTrue("validArea: too long invalid", !validArea("SE33"));
 }
 
+static void testParseVersion() {
+  int v[3];
+  bool pre = false;
+  checkTrue("parseVersion: v2.1.3 parses", parseVersion("v2.1.3", v));
+  check("parseVersion: v2.1.3 major", v[0], 2);
+  check("parseVersion: v2.1.3 minor", v[1], 1);
+  check("parseVersion: v2.1.3 patch", v[2], 3);
+  checkTrue("parseVersion: v2 parses", parseVersion("v2", v));
+  checkTrue("parseVersion: dev is invalid", !parseVersion("dev", v));
+  checkTrue("parseVersion: empty is invalid", !parseVersion("", v));
+  checkTrue("parseVersion: v2. is invalid", !parseVersion("v2.", v));
+  checkTrue("parseVersion: four parts is invalid", !parseVersion("v2.1.3.4", v));
+  checkTrue("parseVersion: trailing text is invalid", !parseVersion("v2.1x", v));
+  checkTrue("parseVersion: huge number is invalid", !parseVersion("v99999999999", v));
+  checkTrue("parseVersion: -rc1 is invalid without pre", !parseVersion("v2.1-rc1", v));
+  checkTrue("parseVersion: -rc1 parses with pre", parseVersion("v2.1-rc1", v, &pre) && pre);
+  checkTrue("parseVersion: bare - is invalid", !parseVersion("v2.1-", v, &pre));
+}
+
 static void testVersions() {
   checkTrue("isNewerVersion: v2.1 > v2.0", isNewerVersion("v2.1", "v2.0"));
   checkTrue("isNewerVersion: v2.10 > v2.9", isNewerVersion("v2.10", "v2.9"));
@@ -134,6 +153,10 @@ static void testVersions() {
   checkTrue("isNewerVersion: dev build is never replaced", !isNewerVersion("v9.0", "dev"));
   checkTrue("isNewerVersion: garbage is never newer", !isNewerVersion("latest", "v2.0"));
   checkTrue("isNewerVersion: null is never newer", !isNewerVersion(nullptr, "v2.0"));
+  checkTrue("isNewerVersion: release candidate is never installed", !isNewerVersion("v2.1-rc1", "v2.0"));
+  checkTrue("isNewerVersion: v2.1 replaces v2.1-rc1", isNewerVersion("v2.1", "v2.1-rc1"));
+  checkTrue("isNewerVersion: v2.2 replaces v2.1-rc1", isNewerVersion("v2.2", "v2.1-rc1"));
+  checkTrue("isNewerVersion: v2.0 does not replace v2.1-rc1", !isNewerVersion("v2.0", "v2.1-rc1"));
 }
 
 int main() {
@@ -148,6 +171,7 @@ int main() {
   testIsNightHour();
   testBackoff();
   testValidArea();
+  testParseVersion();
   testVersions();
 
   printf("\n%d OK, %d FAIL\n", passed, failed);

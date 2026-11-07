@@ -80,22 +80,40 @@ inline bool validArea(const char* a) {
 }
 
 // Parses a version like "v2.1" or "2.1.3" into major, minor, patch. Missing parts are 0.
-// Returns false if it doesn't start with a number (e.g. "dev").
-inline bool parseVersion(const char* s, int v[3]) {
+// A suffix such as "-rc1" is only accepted when pre is given, and then sets *pre.
+// Returns false for anything else (e.g. "dev", "v2.", "v2.1.3.4").
+inline bool parseVersion(const char* s, int v[3], bool* pre = nullptr) {
   v[0] = v[1] = v[2] = 0;
+  if (pre) *pre = false;
   if (!s) return false;
   if (*s == 'v' || *s == 'V') s++;
-  if (*s < '0' || *s > '9') return false;
-  return sscanf(s, "%d.%d.%d", &v[0], &v[1], &v[2]) >= 1;
+  for (int i = 0; i < 3; i++) {
+    if (*s < '0' || *s > '9') return false;
+    int x = 0;
+    while (*s >= '0' && *s <= '9') {
+      if (x > 99999) return false;
+      x = x * 10 + (*s - '0');
+      s++;
+    }
+    v[i] = x;
+    if (*s == '\0') return true;
+    if (*s == '-' && s[1] != '\0' && pre) { *pre = true; return true; }
+    if (*s != '.' || i == 2) return false;
+    s++;
+  }
+  return false;
 }
 
-// True if candidate is a higher version than current. Unparseable versions never count as newer,
-// and a current version that can't be parsed (a local "dev" build) is never replaced.
+// True if candidate is a stable release that should replace current.
+// - Release candidates ("v2.1-rc1") are never installed automatically.
+// - A lamp running a release candidate gets the stable release with the same number.
+// - A current version that can't be parsed (a local "dev" build) is never replaced.
 inline bool isNewerVersion(const char* candidate, const char* current) {
   int a[3], b[3];
-  if (!parseVersion(candidate, a) || !parseVersion(current, b)) return false;
+  bool currentPre = false;
+  if (!parseVersion(candidate, a) || !parseVersion(current, b, &currentPre)) return false;
   for (int i = 0; i < 3; i++) {
     if (a[i] != b[i]) return a[i] > b[i];
   }
-  return false;
+  return currentPre;
 }

@@ -41,11 +41,17 @@ jobs:
 
       - uses: arduino/setup-arduino-cli@v2
 
-      - name: Install pinned ESP32 core and libraries
+      - name: Install pinned cores and libraries
         run: bash scripts/arduino-deps.sh
 
-      - name: Build and package firmware
-        run: bash scripts/build-firmware.sh "$GITHUB_REF_NAME"
+      - name: Build ESP32 firmware
+        run: bash scripts/build-firmware.sh "$GITHUB_REF_NAME" esp32
+
+      - name: Build ESP8266 firmware
+        run: bash scripts/build-firmware.sh "$GITHUB_REF_NAME" esp8266
+
+      - name: Package install page and checksums
+        run: bash scripts/package.sh "$GITHUB_REF_NAME"
 
       - name: Create release
         uses: softprops/action-gh-release@v3

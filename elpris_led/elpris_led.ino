@@ -13,7 +13,8 @@
 //  - Settings are validated, WiFiManager fields show stored values
 //  - No blocking calls in the web handler
 //  - OTA and portal passwords are set in the web UI and stored in flash (no passwords in the code)
-//  - Automatic updates: new GitHub releases are found and installed over the air
+//  - Automatic updates: new GitHub releases are found every 6 hours and installed right after a
+//    restart, when the most memory is free
 //  - Network name elpris-led-xxxxxx in the router and http://elpris-led.local via mDNS
 //  - Pure logic lives in elpris_logic.h and is tested with "make test" (see tests/)
 
@@ -45,7 +46,7 @@ const char* DEFAULT_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // Sweden
 const char* MDNS_NAME  = "elpris-led";                   // reachable as http://elpris-led.local
 
 const int SLOTS_PER_DAY   = 96;
-const int RING_SIZE       = 512;      // cache for about 5 days of 15-minute slots
+const int RING_SIZE       = PRICE_CACHE_SLOTS;   // per board, see platform.h
 
 const int TOMORROW_FETCH_MIN = 13 * 60 + 30;  // start looking for tomorrow's prices at 13:30 local time
 const int TOMORROW_ERROR_MIN = 16 * 60;       // missing tomorrow prices count as an error only after 16:00
@@ -60,10 +61,12 @@ const int FETCH_ERR_EMPTY = -102;   // the response had no prices
 
 // ---------- UPDATES ----------
 // The install page (GitHub Pages) publishes manifest.json with the latest version and one app binary per board.
+// When a newer version is found, the lamp restarts and installs it first thing after connecting to wifi,
+// before anything else has used memory. That matters on ESP8266, where https needs most of the free memory.
 const char* UPDATE_BASE_URL = "https://flysen.github.io/elpris-led/";
 const char* UPDATE_FIRMWARE = "firmware/" BOARD_NAME "/elpris-led.bin";
 const unsigned long UPDATE_FIRST_CHECK_MS = 2UL * 60UL * 1000UL;          // first check 2 min after boot
-const unsigned long UPDATE_INTERVAL_MS    = 24UL * 60UL * 60UL * 1000UL;  // then once a day
+const unsigned long UPDATE_INTERVAL_MS    = 6UL * 60UL * 60UL * 1000UL;   // then every 6 hours
 const unsigned long UPDATE_RETRY_MS       = 60UL * 60UL * 1000UL;         // retry after 1 h if the check fails
 
 // ---------- LED DATA ----------
@@ -124,6 +127,7 @@ String        latestVersion      = "";     // latest release seen on the install
 String        updateMessage      = "";     // result of the last update attempt, shown in the web UI
 unsigned long nextUpdateCheckMs  = UPDATE_FIRST_CHECK_MS;
 bool          updateRequested    = false;  // "Check for updates now" was pressed
+bool          restartingForUpdate = false; // a restart to install an update is coming
 
 // =====================================================================
 //  Settings: load / validate / save
@@ -196,6 +200,10 @@ String priceUrl(time_t now, int dayOffset) {
   return String("https://www.elprisetjustnu.se/api/v1/prices/") + buf + "_" + cfgArea + ".json";
 }
 
+String memoryInfo() {
+  return "free memory " + String(ESP.getFreeHeap()) + " bytes, largest block " + String(maxFreeBlock()) + " bytes";
+}
+
 // =====================================================================
 //  Fetching prices
 // =====================================================================
@@ -264,8 +272,7 @@ void serviceFetch(const struct tm& t, time_t now) {
   else if (minutes >= TOMORROW_FETCH_MIN && !dayCovered(tomorrowSlot)) dayOffset = 1;
   else return;
 
-  uint32_t freeBefore = ESP.getFreeHeap();
-  uint32_t blockBefore = maxFreeBlock();
+  String memBefore = memoryInfo();
   int code = 0;
   bool ok = fetchDay(priceUrl(now, dayOffset), code);
   unsigned long ms = millis();
@@ -288,8 +295,7 @@ void serviceFetch(const struct tm& t, time_t now) {
     unsigned long d = backoffMs(failStreak);
     nextAttemptMs = ms + d;
     fetchFailing = (dayOffset == 0) || (minutes >= TOMORROW_ERROR_MIN);
-    lastFetchError = describeFetchError(code) + " (code " + String(code) + ", free memory " +
-                     String(freeBefore) + " bytes, largest block " + String(blockBefore) + " bytes)";
+    lastFetchError = describeFetchError(code) + " (code " + String(code) + ", " + memBefore + ")";
     Serial.printf("Fetch failed: %s, retrying in %lu s\n", lastFetchError.c_str(), d / 1000);
   }
 }
@@ -321,20 +327,26 @@ bool fetchLatestVersion(String& out) {
   return true;
 }
 
-void installUpdate() {
-  Serial.printf("Installing update %s (running %s on %s)\n", latestVersion.c_str(), FW_VERSION, BOARD_NAME);
+void showUpdatingOnStrip() {
   fill_solid(leds, cfgNumLeds, CRGB::Black);
   for (int i = 0; i < cfgNumLeds; i += 4) leds[i] = CRGB(0, 40, 40);   // dim cyan dots while updating
   FastLED.show();
+}
+
+// Downloads and installs the firmware. Reboots on success; returns only if it failed.
+void installUpdate() {
+  String memBefore = memoryInfo();
+  Serial.printf("Installing update %s (running %s on %s, %s)\n",
+                latestVersion.c_str(), FW_VERSION, BOARD_NAME, memBefore.c_str());
+  showUpdatingOnStrip();
 
   WiFiClientSecure client;
   client.setInsecure();
   httpUpdate.rebootOnUpdate(true);
   t_httpUpdate_return r = httpUpdate.update(client, String(UPDATE_BASE_URL) + UPDATE_FIRMWARE);
 
-  // Only reached if the update did not reboot the device
   if (r == HTTP_UPDATE_FAILED) {
-    updateMessage = "Update failed: " + httpUpdate.getLastErrorString();
+    updateMessage = "Update to " + latestVersion + " failed: " + httpUpdate.getLastErrorString() + " (" + memBefore + ")";
   } else {
     updateMessage = "No update installed";
   }
@@ -342,7 +354,29 @@ void installUpdate() {
   needRebuild = true;
 }
 
+// Restart and install the update first thing after the restart, when the most memory is free
+void restartToInstall(const String& version) {
+  preferences.putString("pendver", version);
+  preferences.putBool("pendupd", true);
+  updateMessage = "Restarting to install " + version + "...";
+  restartingForUpdate = true;
+  showUpdatingOnStrip();
+  restartAtMs = millis() + 1500;   // time for the web page to answer first
+  Serial.println(updateMessage);
+}
+
+// Called in setup right after wifi connects, before the web server, mDNS and price fetching start
+void installPendingUpdate() {
+  if (!preferences.getBool("pendupd", false)) return;
+  preferences.putBool("pendupd", false);   // clear first, so a failing update can't cause a restart loop
+  latestVersion = preferences.getString("pendver", "");
+  installUpdate();
+  // Still here: the update failed. Start normally and try again at the next regular check.
+  nextUpdateCheckMs = millis() + UPDATE_INTERVAL_MS;
+}
+
 void serviceUpdate() {
+  if (restartingForUpdate) return;
   if (!updateRequested && (long)(millis() - nextUpdateCheckMs) < 0) return;
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -352,7 +386,7 @@ void serviceUpdate() {
   String v;
   if (!fetchLatestVersion(v)) {
     nextUpdateCheckMs = millis() + UPDATE_RETRY_MS;
-    if (manual) updateMessage = "Could not check for updates";
+    if (manual) updateMessage = "Could not check for updates (" + memoryInfo() + ")";
     Serial.println("Update check failed");
     return;
   }
@@ -360,8 +394,8 @@ void serviceUpdate() {
   latestVersion = v;
 
   if (isNewerVersion(v.c_str(), FW_VERSION)) {
-    if (cfgAutoUpdate || manual) installUpdate();
-    else updateMessage = "Update available";
+    if (cfgAutoUpdate || manual) restartToInstall(v);
+    else updateMessage = v + " is available";
   } else if (manual) {
     updateMessage = "Already up to date";
   }
@@ -441,9 +475,14 @@ void handleRoot() {
   String ip = WiFi.localIP().toString();
   String addrTxt = mdnsActive ? String("http://") + MDNS_NAME + ".local or http://" + ip : String("http://") + ip;
 
+  // Reload the page by itself while an update check or an update restart is going on
+  String refresh = "";
+  if (updateRequested)          refresh = "<meta http-equiv='refresh' content='5'>";
+  else if (restartingForUpdate) refresh = "<meta http-equiv='refresh' content='30;url=/'>";
+
   String html;
   html.reserve(8000);
-  html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
+  html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>" + refresh;
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
   html += "input[type=checkbox]{width:auto;margin-right:8px;}";
@@ -461,8 +500,8 @@ void handleRoot() {
 
   html += "<div class='card'><h3>Updates</h3>";
   if (updateMessage.length()) html += "<p>" + htmlEscape(updateMessage) + "</p>";
-  html += "<form action='/update' method='POST'><button type='submit'>Check for updates now</button></form>";
-  html += "<p><small>Installs a newer release if there is one. The lamp restarts when it's done.</small></p></div>";
+  if (!restartingForUpdate) html += "<form action='/update' method='POST'><button type='submit'>Check for updates now</button></form>";
+  html += "<p><small>Installs a newer release if there is one: the lamp restarts, installs it and restarts again, which takes about a minute.</small></p></div>";
 
   html += "<div class='card'><h3>Settings</h3><form action='/save' method='POST'>";
   html += "<label>Price area:</label><select name='area'>";
@@ -555,22 +594,8 @@ void handleUpdate() {
 // =====================================================================
 //  Setup / loop
 // =====================================================================
-void setup() {
-  Serial.begin(115200);
-  clearCache();
-  Serial.printf("Elpris-LED %s (%s)\n", FW_VERSION, BOARD_NAME);
-
-  if (!preferences.begin("elpris-config", false)) Serial.println("Could not open settings storage");
-  loadSettings();
-
-  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, cfgNumLeds);
-  FastLED.setBrightness(cfgBrightDay);
-  fill_solid(leds, cfgNumLeds, CRGB::Blue);
-  FastLED.show();
-
-  // Name shown in the router, unique per lamp, e.g. elpris-led-a1b2c3
-  snprintf(hostName, sizeof(hostName), "elpris-led-%s", chipSuffix().c_str());
-
+// WiFiManager lives only inside this function, so its memory is freed once wifi is connected
+void connectWifi() {
   pArea.setValue(cfgArea, 5);
   pTz.setValue(cfgTz, 63);
   pNstart.setValue(String(cfgNightStart).c_str(), 3);
@@ -612,8 +637,29 @@ void setup() {
     saveSettings();
     if (oldLeds != cfgNumLeds) { delay(500); ESP.restart(); }
   }
+}
 
+void setup() {
+  Serial.begin(115200);
+  clearCache();
+  Serial.printf("Elpris-LED %s (%s)\n", FW_VERSION, BOARD_NAME);
+
+  if (!preferences.begin("elpris-config", false)) Serial.println("Could not open settings storage");
+  loadSettings();
+
+  FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, cfgNumLeds);
+  FastLED.setBrightness(cfgBrightDay);
+  fill_solid(leds, cfgNumLeds, CRGB::Blue);
+  FastLED.show();
+
+  // Name shown in the router, unique per lamp, e.g. elpris-led-a1b2c3
+  snprintf(hostName, sizeof(hostName), "elpris-led-%s", chipSuffix().c_str());
+
+  connectWifi();
   Serial.printf("Connected as %s, IP address: %s\n", hostName, WiFi.localIP().toString().c_str());
+
+  // An update found before the restart is installed now, while nothing else uses memory
+  installPendingUpdate();
 
   // http://elpris-led.local. With several lamps, only one answers to this name; use the IP for the others.
   if (MDNS.begin(MDNS_NAME)) {
@@ -648,6 +694,7 @@ void loop() {
   if (mdnsActive) serviceMdns();
   server.handleClient();
   if (restartAtMs && (long)(millis() - restartAtMs) >= 0) ESP.restart();
+  if (restartingForUpdate) { delay(20); return; }   // keep the cyan dots until the restart
   serviceUpdate();
 
   time_t now = time(nullptr);

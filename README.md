@@ -44,7 +44,7 @@ With several lamps on the same network, only one of them answers to `elpris-led.
 - The direction can be reversed, so time reads left to right however the strip is mounted.
 - Price area, number of LEDs (up to 300), direction, time zone, night mode hours and day/night brightness are set in a web UI at `http://elpris-led.local`.
 - Shows up as `elpris-led-xxxxxx` in the router, so it's easy to find.
-- Updates itself: new releases are found and installed automatically, for each board type.
+- Updates itself: new releases are found within six hours and installed automatically, for each board type.
 - Few API calls; cached prices are used if fetching fails, with automatic retries. The web UI shows the reason when fetching fails.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
 - Handles daylight saving time correctly (23- and 25-hour days).
@@ -88,7 +88,8 @@ The board and the strip must share ground. Connect the strip at the end where th
 
 ## Updating
 
-- **Automatic (default):** the lamp checks for a new release two minutes after start and then once a day, and installs the firmware for its own board by itself. Wifi and settings are kept. You can turn this off, or press *Check for updates now*, in the lamp's web UI. The current version, board and latest release are shown there too.
+- **Automatic (default):** the lamp checks for a new release two minutes after start and then every six hours. When it finds one, it restarts, installs the new firmware for its own board right after reconnecting to wifi (before anything else uses memory), and restarts again. This takes about a minute, with dim cyan dots on the strip. Wifi and settings are kept. If the download fails, the lamp starts normally and tries again at the next check.
+- **Check for updates now:** the button in the lamp's web UI does the same thing right away. The page reloads by itself while it checks and installs, and shows the current version, board and latest release. You can also turn automatic updates off there.
 - **Install page:** run it again and choose *not* to erase. Wifi and settings are kept.
 - **Arduino OTA:** if you've set an OTA password, the lamp shows up as `elpris-led-xxxxxx` among the network ports in the Arduino IDE. You can also upload `elpris-led-<version>-<board>-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with `espota.py`.
 
@@ -96,7 +97,7 @@ Builds you compile yourself, and CI builds, report version `dev` and never updat
 
 ## Building from source
 
-Only needed if you want to change the code. One sketch, `elpris_led/`, builds for both boards; the few differences (includes, data pin, settings storage, mDNS and OTA) are in `elpris_led/platform.h`. With [arduino-cli](https://arduino.github.io/arduino-cli/) installed:
+Only needed if you want to change the code. One sketch, `elpris_led/`, builds for both boards; the few differences (includes, data pin, settings storage, mDNS, OTA and price cache size) are in `elpris_led/platform.h`. With [arduino-cli](https://arduino.github.io/arduino-cli/) installed:
 
 ```bash
 bash scripts/arduino-deps.sh                # ESP32 and ESP8266 cores and libraries at the pinned versions
@@ -138,7 +139,7 @@ Dependabot opens pull requests when the GitHub Actions used here get new version
 
 ## Releases (for maintainers)
 
-Pushing a version tag checks the tag, runs the tests, builds the firmware for both boards with that version number, publishes a release with `-full.bin` and `-ota.bin` per board plus `SHA256SUMS`, and updates the install page. Lamps in the field pick up the new version from the install page within a day.
+Pushing a version tag checks the tag, runs the tests, builds the firmware for both boards with that version number, publishes a release with `-full.bin` and `-ota.bin` per board plus `SHA256SUMS`, and updates the install page. Lamps in the field pick up the new version from the install page within six hours.
 
 ```bash
 git tag v2.1

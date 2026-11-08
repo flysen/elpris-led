@@ -92,6 +92,39 @@ static void testLedSlotRange() {
   }
 }
 
+static void testLedTimeState() {
+  check("ledTimeState: LED before now is past", ledTimeState(0, 4, 10), LED_PAST);
+  check("ledTimeState: LED ending exactly at now is past", ledTimeState(6, 10, 10), LED_PAST);
+  check("ledTimeState: now at the LED's first slot", ledTimeState(10, 14, 10), LED_NOW);
+  check("ledTimeState: now at the LED's last slot", ledTimeState(10, 14, 13), LED_NOW);
+  check("ledTimeState: LED after now is future", ledTimeState(14, 18, 10), LED_FUTURE);
+
+  // Exactly one LED is "now" for every slot, and past/future are on the right sides of it
+  const int windows[] = {96, 192};
+  const int counts[]  = {7, 60, 100, 300};
+  for (int w : windows) {
+    for (int n : counts) {
+      bool ok = true;
+      for (int cur = 0; cur < w; cur++) {
+        int nowCount = 0, nowIdx = -1;
+        for (int i = 0; i < n; i++) {
+          int s0, s1;
+          ledSlotRange(i, w, n, s0, s1);
+          LedTime st = ledTimeState(s0, s1, cur);
+          if (st == LED_NOW) { nowCount++; nowIdx = i; }
+          if (st == LED_PAST && nowIdx >= 0) ok = false;     // past after now
+          if (st == LED_FUTURE && nowIdx < 0) ok = false;    // future before now
+        }
+        // With more LEDs than slots, several LEDs share the current slot; with fewer, exactly one
+        if (n <= w ? nowCount != 1 : nowCount < 1) ok = false;
+      }
+      char name[96];
+      snprintf(name, sizeof(name), "ledTimeState: %d LEDs over %d slots, now marked correctly", n, w);
+      checkTrue(name, ok);
+    }
+  }
+}
+
 static void testPhysicalLed() {
   check("physicalLed: normal, first LED", physicalLed(0, 100, false), 0);
   check("physicalLed: normal, last LED", physicalLed(99, 100, false), 99);
@@ -171,6 +204,7 @@ static void testVersions() {
   checkTrue("isNewerVersion: v2.1 > v2.0", isNewerVersion("v2.1", "v2.0"));
   checkTrue("isNewerVersion: v2.10 > v2.9", isNewerVersion("v2.10", "v2.9"));
   checkTrue("isNewerVersion: v3.0 > v2.9.9", isNewerVersion("v3.0", "v2.9.9"));
+  checkTrue("isNewerVersion: v3.0 > v2.5", isNewerVersion("v3.0", "v2.5"));
   checkTrue("isNewerVersion: v2.0.1 > v2.0", isNewerVersion("v2.0.1", "v2.0"));
   checkTrue("isNewerVersion: 2.1 without v > v2.0", isNewerVersion("2.1", "v2.0"));
   checkTrue("isNewerVersion: same version is not newer", !isNewerVersion("v2.0", "v2.0"));
@@ -194,6 +228,7 @@ int main() {
   testPriceSlots();
   testDayLengths();
   testLedSlotRange();
+  testLedTimeState();
   testPhysicalLed();
   testIsNightHour();
   testBackoff();

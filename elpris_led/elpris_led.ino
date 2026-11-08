@@ -6,7 +6,8 @@
 //  - Configurable time zone (web + WiFiManager), stored in flash
 //  - Configurable LED count (max MAX_LEDS), 15-minute prices are scaled to the strip
 //  - Few API calls: today's prices once a day, tomorrow's from 13:30 until they are available
-//  - Exponential backoff + visual error indication
+//  - Prices are read one at a time from the response, so it fits in ESP8266 memory
+//  - Exponential backoff + visual error indication, last error shown in the web UI
 //  - Cached data is used as long as it covers the current time ("offline" only when it runs out)
 //  - Settings are validated, WiFiManager fields show stored values
 //  - No blocking calls in the web handler
@@ -50,6 +51,11 @@ const int TOMORROW_ERROR_MIN = 16 * 60;       // missing tomorrow prices count a
 const int STATUS_LEDS        = 3;             // number of LEDs that blink magenta on fetch errors
 
 const unsigned long NOT_PUBLISHED_RETRY_MS  = 15UL * 60UL * 1000UL;
+
+// Our own fetch error codes. HTTPClient uses -1 to -11, so these start at -100.
+const int FETCH_ERR_BEGIN = -100;   // could not start the request
+const int FETCH_ERR_PARSE = -101;   // the response could not be read as price data
+const int FETCH_ERR_EMPTY = -102;   // the response had no prices
 
 // ---------- UPDATES ----------
 // The install page (GitHub Pages) publishes manifest.json with the latest version and one app binary per board.
@@ -106,6 +112,7 @@ int          lastMday      = -1;
 unsigned long nextAttemptMs = 0;
 int          failStreak    = 0;
 bool         fetchFailing  = false;
+String       lastFetchError = "";            // shown in the web UI while fetching fails
 unsigned long restartAtMs   = 0;
 bool         otaActive     = false;
 bool         mdnsActive    = false;
@@ -188,41 +195,56 @@ String priceUrl(time_t now, int dayOffset) {
 // =====================================================================
 //  Fetching prices
 // =====================================================================
+String describeFetchError(int code) {
+  if (code > 0)               return "server answered HTTP " + String(code);
+  if (code == FETCH_ERR_BEGIN) return "could not start the request";
+  if (code == FETCH_ERR_PARSE) return "could not read the price data";
+  if (code == FETCH_ERR_EMPTY) return "no prices in the response";
+  return HTTPClient::errorToString(code);   // connection, TLS and timeout errors
+}
+
 bool fetchDay(const String& url, int& code) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   setHttpTimeouts(http);
   http.useHTTP10(true);
-  if (!http.begin(client, url)) { code = -1; return false; }
+  if (!http.begin(client, url)) { code = FETCH_ERR_BEGIN; return false; }
 
   code = http.GET();
   if (code != HTTP_CODE_OK) { http.end(); return false; }
 
+  // The response is a JSON array with one object per price. Reading the objects one at a time,
+  // instead of the whole array at once, keeps memory use small enough for ESP8266.
   JsonDocument filter;
-  filter[0]["SEK_per_kWh"] = true;
-  filter[0]["time_start"]  = true;
-  filter[0]["time_end"]    = true;
+  filter["SEK_per_kWh"] = true;
+  filter["time_start"]  = true;
+  filter["time_end"]    = true;
 
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
-  http.end();
-  if (err) { code = -2; return false; }
-
+  Stream& stream = http.getStream();
   int stored = 0;
-  for (JsonObject o : doc.as<JsonArray>()) {
-    const char* ts = o["time_start"];
-    const char* te = o["time_end"];
-    if (!ts) continue;
-    time_t a, b;
-    if (!parseIso(ts, a)) continue;
-    if (!te || !parseIso(te, b)) b = a;   // priceSlots then assumes one hour
-    float p = o["SEK_per_kWh"] | 0.0f;
-    int32_t s0, s1;
-    priceSlots(a, b, s0, s1);
-    for (int32_t s = s0; s < s1; s++) { putSlot(s, p); stored++; }
+  bool parseError = !stream.find("[");
+  if (!parseError) {
+    do {
+      JsonDocument item;
+      DeserializationError err = deserializeJson(item, stream, DeserializationOption::Filter(filter));
+      if (err) { parseError = true; break; }
+
+      const char* ts = item["time_start"];
+      const char* te = item["time_end"];
+      if (!ts) continue;
+      time_t a, b;
+      if (!parseIso(ts, a)) continue;
+      if (!te || !parseIso(te, b)) b = a;   // priceSlots then assumes one hour
+      float p = item["SEK_per_kWh"] | 0.0f;
+      int32_t s0, s1;
+      priceSlots(a, b, s0, s1);
+      for (int32_t s = s0; s < s1; s++) { putSlot(s, p); stored++; }
+    } while (stream.findUntil(",", "]"));
   }
-  if (stored == 0) { code = -3; return false; }
+  http.end();
+
+  if (stored == 0) { code = parseError ? FETCH_ERR_PARSE : FETCH_ERR_EMPTY; return false; }
   return true;
 }
 
@@ -238,6 +260,8 @@ void serviceFetch(const struct tm& t, time_t now) {
   else if (minutes >= TOMORROW_FETCH_MIN && !dayCovered(tomorrowSlot)) dayOffset = 1;
   else return;
 
+  uint32_t freeBefore = ESP.getFreeHeap();
+  uint32_t blockBefore = maxFreeBlock();
   int code = 0;
   bool ok = fetchDay(priceUrl(now, dayOffset), code);
   unsigned long ms = millis();
@@ -245,6 +269,7 @@ void serviceFetch(const struct tm& t, time_t now) {
   if (ok) {
     failStreak = 0;
     fetchFailing = false;
+    lastFetchError = "";
     needRebuild = true;
     int32_t startSlot = dayOffset ? tomorrowSlot : todaySlot;
     nextAttemptMs = ms + (dayCovered(startSlot) ? 1000UL : NOT_PUBLISHED_RETRY_MS);
@@ -252,13 +277,16 @@ void serviceFetch(const struct tm& t, time_t now) {
   } else if (dayOffset == 1 && code == 404) {
     nextAttemptMs = ms + NOT_PUBLISHED_RETRY_MS;
     fetchFailing = (minutes >= TOMORROW_ERROR_MIN);
+    if (fetchFailing) lastFetchError = "tomorrow's prices are not published yet";
     Serial.println("Tomorrow's prices not published yet");
   } else {
     failStreak++;
     unsigned long d = backoffMs(failStreak);
     nextAttemptMs = ms + d;
     fetchFailing = (dayOffset == 0) || (minutes >= TOMORROW_ERROR_MIN);
-    Serial.printf("Fetch failed (code %d), retrying in %lu s\n", code, d / 1000);
+    lastFetchError = describeFetchError(code) + " (code " + String(code) + ", free memory " +
+                     String(freeBefore) + " bytes, largest block " + String(blockBefore) + " bytes)";
+    Serial.printf("Fetch failed: %s, retrying in %lu s\n", lastFetchError.c_str(), d / 1000);
   }
 }
 
@@ -402,6 +430,7 @@ void handleRoot() {
   int32_t ns = (int32_t)(now / SLOT_SEC);
   String priceTxt = (now > 1700000000 && hasSlot(ns)) ? String(getSlot(ns), 2) + " SEK/kWh" : String("unavailable");
   String status = fetchFailing ? "Cannot fetch prices (retrying automatically)" : "OK";
+  if (fetchFailing && lastFetchError.length()) status += "<br><small>Last error: " + htmlEscape(lastFetchError) + "</small>";
   String otaTxt = otaActive ? "Active" : "Off (set an OTA password below)";
   String fwTxt = String(FW_VERSION) + " (" + BOARD_NAME + ")";
   if (latestVersion.length()) fwTxt += ", latest release: " + htmlEscape(latestVersion);
@@ -423,7 +452,8 @@ void handleRoot() {
   html += "<p><strong>Status:</strong> " + status + "</p>";
   html += "<p><strong>OTA:</strong> " + otaTxt + "</p>";
   html += "<p><strong>Firmware:</strong> " + fwTxt + "</p>";
-  html += "<p><strong>Address:</strong> " + addrTxt + "<br><small>Name in the router: " + String(hostName) + "</small></p></div>";
+  html += "<p><strong>Address:</strong> " + addrTxt + "<br><small>Name in the router: " + String(hostName) + "</small></p>";
+  html += "<p><small>Free memory: " + String(ESP.getFreeHeap()) + " bytes, largest block " + String(maxFreeBlock()) + " bytes</small></p></div>";
 
   html += "<div class='card'><h3>Updates</h3>";
   if (updateMessage.length()) html += "<p>" + htmlEscape(updateMessage) + "</p>";
@@ -498,6 +528,7 @@ void handleSave() {
     nextAttemptMs = 0;
     failStreak = 0;
     fetchFailing = false;
+    lastFetchError = "";
     needRebuild = true;
   }
   if (oldLeds != cfgNumLeds || otaPwChanged) restartAtMs = millis() + 1500;

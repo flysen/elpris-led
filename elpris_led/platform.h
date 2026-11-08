@@ -1,6 +1,11 @@
 // Board-specific includes and the few differences between ESP32 and ESP8266.
 // Everything else in the firmware is the same for both boards.
+//
+// Note: this file is included before FastLED, so it must not define macros with names that
+// FastLED uses internally (such as DATA_PIN, which FastLED uses as a template parameter name).
+// Constants are therefore constexpr variables, not #defines.
 #pragma once
+#include <stdint.h>
 
 #if defined(ESP32)
 
@@ -12,7 +17,7 @@
   #include <Preferences.h>
 
   #define BOARD_NAME "esp32"
-  #define DATA_PIN   16          // GPIO16, marked D16 or RX2 on most DevKit boards
+  constexpr uint8_t DATA_PIN = 16;   // GPIO16, marked D16 or RX2 on most DevKit boards
 
   inline void setHttpTimeouts(HTTPClient& http) {
     http.setConnectTimeout(5000);
@@ -31,7 +36,7 @@
   #include <LittleFS.h>
 
   #define BOARD_NAME "esp8266"
-  #define DATA_PIN   2           // GPIO2, marked D4 on NodeMCU and Wemos D1 mini (same as WLED)
+  constexpr uint8_t DATA_PIN = 2;    // GPIO2, marked D4 on NodeMCU and Wemos D1 mini (same as WLED)
 
   using WebServer = ESP8266WebServer;
   static ESP8266HTTPUpdate& httpUpdate = ESPhttpUpdate;

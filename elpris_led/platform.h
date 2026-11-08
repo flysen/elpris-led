@@ -21,6 +21,7 @@
   #define BOARD_NAME "esp32"
   constexpr uint8_t  DATA_PIN = 16;    // GPIO16, marked D16 or RX2 on most DevKit boards
   constexpr uint16_t OTA_PORT = 3232;  // Arduino OTA port on ESP32
+  constexpr int PRICE_CACHE_SLOTS = 512;   // about 5 days of 15-minute prices
 
   inline void setHttpTimeouts(HTTPClient& http) {
     http.setConnectTimeout(5000);
@@ -62,6 +63,7 @@
   #define BOARD_NAME "esp8266"
   constexpr uint8_t  DATA_PIN = 2;     // GPIO2, marked D4 on NodeMCU and Wemos D1 mini (same as WLED)
   constexpr uint16_t OTA_PORT = 8266;  // Arduino OTA port on ESP8266
+  constexpr int PRICE_CACHE_SLOTS = 256;   // about 2.5 days (today + tomorrow is 192); saves memory for https
 
   using WebServer = ESP8266WebServer;
   static ESP8266HTTPUpdate& httpUpdate = ESPhttpUpdate;

@@ -23,14 +23,25 @@ If no USB port shows up, use a USB cable that carries data, not just power. On W
 1. The strip pulses blue and the lamp starts its own wifi, **Elpris-LED-Config**. Connect to it with your phone.
 2. If no page opens, go to `http://192.168.4.1`. Choose your wifi and fill in price area (SE1–SE4), number of LEDs, night mode and brightness.
 3. The lamp joins your network, fetches prices and starts showing colors.
-4. Find the lamp's IP address in your router and open it in a browser to change settings later. Set an **OTA password** and a **config portal password** right away; until then OTA is off and the portal is open.
+4. Open **http://elpris-led.local** in a browser on the same network to change settings later. If that doesn't work (some Android phones and older Windows versions don't support `.local` names), look for **elpris-led-xxxxxx** in your router's list of devices and open its IP address. Set an **OTA password** and a **config portal password** right away; until then OTA is off and the portal is open.
+
+### Finding the lamp on the network
+
+| Where | Name |
+|---|---|
+| Browser | `http://elpris-led.local` |
+| Router's device list | `elpris-led-xxxxxx`, where `xxxxxx` is the end of the board's MAC address |
+| Arduino IDE network ports (OTA) | `elpris-led-xxxxxx`, once an OTA password is set |
+
+With several lamps on the same network, only one of them answers to `elpris-led.local`. Use the router names and IP addresses for the others; the web UI of each lamp shows its own name and IP address.
 
 ## Features
 
 - Shows today from midnight to midnight along the strip, and tomorrow too once prices are published (usually after lunch).
 - The LED for the current 15 minutes pulses.
 - The color scale is relative to the period shown, so even a cheap day has red hours.
-- Price area, number of LEDs (up to 300), time zone, night mode hours and day/night brightness are set in a web UI.
+- Price area, number of LEDs (up to 300), time zone, night mode hours and day/night brightness are set in a web UI at `http://elpris-led.local`.
+- Shows up as `elpris-led-xxxxxx` in the router, so it's easy to find.
 - Updates itself: new releases are found and installed automatically, for each board type.
 - Few API calls; cached prices are used if fetching fails, with automatic retries.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
@@ -77,13 +88,13 @@ The board and the strip must share ground. Connect the strip at the end where th
 
 - **Automatic (default):** the lamp checks for a new release two minutes after start and then once a day, and installs the firmware for its own board by itself. Wifi and settings are kept. You can turn this off, or press *Check for updates now*, in the lamp's web UI. The current version, board and latest release are shown there too.
 - **Install page:** run it again and choose *not* to erase. Wifi and settings are kept.
-- **Arduino OTA:** if you've set an OTA password, upload `elpris-led-<version>-<board>-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with the Arduino IDE or `espota.py`.
+- **Arduino OTA:** if you've set an OTA password, the lamp shows up as `elpris-led-xxxxxx` among the network ports in the Arduino IDE. You can also upload `elpris-led-<version>-<board>-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with `espota.py`.
 
 Builds you compile yourself, and CI builds, report version `dev` and never update automatically, so your own changes aren't overwritten. Flash a release to get back on automatic updates.
 
 ## Building from source
 
-Only needed if you want to change the code. One sketch, `elpris_led/`, builds for both boards; the few differences (includes, data pin, settings storage) are in `elpris_led/platform.h`. With [arduino-cli](https://arduino.github.io/arduino-cli/) installed:
+Only needed if you want to change the code. One sketch, `elpris_led/`, builds for both boards; the few differences (includes, data pin, settings storage, mDNS and OTA) are in `elpris_led/platform.h`. With [arduino-cli](https://arduino.github.io/arduino-cli/) installed:
 
 ```bash
 bash scripts/arduino-deps.sh                # ESP32 and ESP8266 cores and libraries at the pinned versions

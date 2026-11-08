@@ -28,6 +28,9 @@
   }
   inline void startNtp(const char* tz, const char* server) { configTzTime(tz, server); }
 
+  // Largest single block of free memory, shown in the web UI to diagnose fetch problems
+  inline uint32_t maxFreeBlock() { return ESP.getMaxAllocHeap(); }
+
   // Last three bytes of the MAC address, e.g. "a1b2c3", to tell lamps apart on the network
   inline String chipSuffix() {
     uint64_t mac = ESP.getEfuseMac();
@@ -65,6 +68,9 @@
 
   inline void setHttpTimeouts(HTTPClient& http) { http.setTimeout(5000); }
   inline void startNtp(const char* tz, const char* server) { configTime(tz, server); }
+
+  // Largest single block of free memory, shown in the web UI to diagnose fetch problems
+  inline uint32_t maxFreeBlock() { return ESP.getMaxFreeBlockSize(); }
 
   // Last three bytes of the MAC address, e.g. "a1b2c3", to tell lamps apart on the network
   inline String chipSuffix() {

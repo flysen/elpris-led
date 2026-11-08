@@ -5,6 +5,7 @@
 // Features:
 //  - Configurable time zone (web + WiFiManager), stored in flash
 //  - Configurable LED count (max MAX_LEDS), 15-minute prices are scaled to the strip
+//  - Configurable direction, so time can run left to right however the strip is mounted
 //  - Few API calls: today's prices once a day, tomorrow's from 13:30 until they are available
 //  - Prices are read one at a time from the response, so it fits in ESP8266 memory
 //  - Exponential backoff + visual error indication, last error shown in the web UI
@@ -67,7 +68,7 @@ const unsigned long UPDATE_RETRY_MS       = 60UL * 60UL * 1000UL;         // ret
 
 // ---------- LED DATA ----------
 CRGB leds[MAX_LEDS];
-CRGB ledColor[MAX_LEDS];
+CRGB ledColor[MAX_LEDS];   // colors in time order; physicalLed() maps them onto the strip
 int  winStartSlot = 0;     // first slot in the display window (local midnight today)
 int  winSlots     = SLOTS_PER_DAY;   // one or two days, counted from real midnights (DST-safe)
 
@@ -89,6 +90,7 @@ int  cfgNightEnd    = 6;
 int  cfgBrightDay   = 40;
 int  cfgBrightNight = 5;
 int  cfgNumLeds     = 100;
+bool cfgReverse     = false;  // true = time runs from the last LED to the first
 bool cfgAutoUpdate  = true;
 char cfgOtaPw[33]   = "";   // empty = OTA disabled
 char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
@@ -150,6 +152,7 @@ void loadSettings() {
   cfgBrightDay   = preferences.getInt("bday", 40);
   cfgBrightNight = preferences.getInt("bnight", 5);
   cfgNumLeds     = preferences.getInt("leds", 100);
+  cfgReverse     = preferences.getBool("reverse", false);
   cfgAutoUpdate  = preferences.getBool("autoupd", true);
   preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
   preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
@@ -164,6 +167,7 @@ void saveSettings() {
   preferences.putInt("bday", cfgBrightDay);
   preferences.putInt("bnight", cfgBrightNight);
   preferences.putInt("leds", cfgNumLeds);
+  preferences.putBool("reverse", cfgReverse);
   preferences.putBool("autoupd", cfgAutoUpdate);
   preferences.putString("otapw", cfgOtaPw);
   preferences.putString("appw", cfgApPw);
@@ -438,7 +442,7 @@ void handleRoot() {
   String addrTxt = mdnsActive ? String("http://") + MDNS_NAME + ".local or http://" + ip : String("http://") + ip;
 
   String html;
-  html.reserve(7500);
+  html.reserve(8000);
   html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>";
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
@@ -469,6 +473,9 @@ void handleRoot() {
   html += "</select>";
 
   html += "<label>Number of LEDs (changing it restarts the device):</label><input type='number' name='leds' min='1' max='" + String(MAX_LEDS) + "' value='" + String(cfgNumLeds) + "'>";
+
+  html += "<p><label><input type='checkbox' name='reverse' value='1'" + String(cfgReverse ? " checked" : "") + ">Reverse direction</label>";
+  html += "<br><small>Normally midnight is at the end where the strip's cable is connected. Tick this if time runs the wrong way, e.g. right to left.</small></p>";
 
   html += "<label>Time zone (presets):</label><select onchange=\"if(this.value)document.getElementById('tz').value=this.value\">";
   html += "<option value=''>Choose...</option>";
@@ -509,7 +516,8 @@ void handleSave() {
   if (server.hasArg("bday"))   cfgBrightDay   = server.arg("bday").toInt();
   if (server.hasArg("bnight")) cfgBrightNight = server.arg("bnight").toInt();
   if (server.hasArg("leds"))   cfgNumLeds     = server.arg("leds").toInt();
-  cfgAutoUpdate = server.hasArg("autoupd");   // unchecked boxes are not sent
+  cfgReverse    = server.hasArg("reverse");   // unchecked boxes are not sent
+  cfgAutoUpdate = server.hasArg("autoupd");
 
   if (server.hasArg("otapw") && server.arg("otapw").length() > 0) {
     String pw = server.arg("otapw");
@@ -674,18 +682,20 @@ void loop() {
     return;
   }
 
+  // ledColor is in time order (midnight first); physicalLed() puts it on the strip in the chosen direction
   int cur = nowSlot - winStartSlot;
   for (int i = 0; i < cfgNumLeds; i++) {
     int s0, s1;
     ledRange(i, s0, s1);
     CRGB c = ledColor[i];
     if (cur >= s0 && cur < s1) c.nscale8(beatsin8(30, 30, 255));
-    leds[i] = c;
+    leds[physicalLed(i, cfgNumLeds, cfgReverse)] = c;
   }
 
+  // Error indicator on the first LEDs in time order, so it follows the chosen direction too
   if (fetchFailing) {
     CRGB c = ((millis() / 500) % 2) ? CRGB::Magenta : CRGB::Black;
-    for (int i = 0; i < STATUS_LEDS && i < cfgNumLeds; i++) leds[i] = c;
+    for (int i = 0; i < STATUS_LEDS && i < cfgNumLeds; i++) leds[physicalLed(i, cfgNumLeds, cfgReverse)] = c;
   }
 
   FastLED.show();

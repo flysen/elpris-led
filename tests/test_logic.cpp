@@ -92,6 +92,32 @@ static void testLedSlotRange() {
   }
 }
 
+static void testPhysicalLed() {
+  check("physicalLed: normal, first LED", physicalLed(0, 100, false), 0);
+  check("physicalLed: normal, last LED", physicalLed(99, 100, false), 99);
+  check("physicalLed: reversed, first in time is last on strip", physicalLed(0, 100, true), 99);
+  check("physicalLed: reversed, last in time is first on strip", physicalLed(99, 100, true), 0);
+  check("physicalLed: reversed, middle", physicalLed(40, 100, true), 59);
+  check("physicalLed: reversed, single LED", physicalLed(0, 1, true), 0);
+
+  // Every LED is used exactly once in both directions
+  const int counts[] = {1, 7, 100, 300};
+  for (int n : counts) {
+    for (int r = 0; r < 2; r++) {
+      static bool seen[300];
+      for (int i = 0; i < n; i++) seen[i] = false;
+      bool ok = true;
+      for (int i = 0; i < n; i++) {
+        int p = physicalLed(i, n, r == 1);
+        if (p < 0 || p >= n || seen[p]) ok = false; else seen[p] = true;
+      }
+      char name[96];
+      snprintf(name, sizeof(name), "physicalLed: %d LEDs %s, each LED used once", n, r ? "reversed" : "normal");
+      checkTrue(name, ok);
+    }
+  }
+}
+
 static void testIsNightHour() {
   checkTrue("isNightHour 23-6: 23 is night", isNightHour(23, 23, 6));
   checkTrue("isNightHour 23-6: 0 is night", isNightHour(0, 23, 6));
@@ -168,6 +194,7 @@ int main() {
   testPriceSlots();
   testDayLengths();
   testLedSlotRange();
+  testPhysicalLed();
   testIsNightHour();
   testBackoff();
   testValidArea();

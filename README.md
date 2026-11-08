@@ -24,6 +24,7 @@ If no USB port shows up, use a USB cable that carries data, not just power. On W
 2. If no page opens, go to `http://192.168.4.1`. Choose your wifi and fill in price area (SE1–SE4), number of LEDs, night mode and brightness.
 3. The lamp joins your network, fetches prices and starts showing colors.
 4. Open **http://elpris-led.local** in a browser on the same network to change settings later. If that doesn't work (some Android phones and older Windows versions don't support `.local` names), look for **elpris-led-xxxxxx** in your router's list of devices and open its IP address. Set an **OTA password** and a **config portal password** right away; until then OTA is off and the portal is open.
+5. If time runs the wrong way for how the strip is mounted, tick **Reverse direction** in the web UI. By default midnight is at the end where the strip's cable is connected.
 
 ### Finding the lamp on the network
 
@@ -40,10 +41,11 @@ With several lamps on the same network, only one of them answers to `elpris-led.
 - Shows today from midnight to midnight along the strip, and tomorrow too once prices are published (usually after lunch).
 - The LED for the current 15 minutes pulses.
 - The color scale is relative to the period shown, so even a cheap day has red hours.
-- Price area, number of LEDs (up to 300), time zone, night mode hours and day/night brightness are set in a web UI at `http://elpris-led.local`.
+- The direction can be reversed, so time reads left to right however the strip is mounted.
+- Price area, number of LEDs (up to 300), direction, time zone, night mode hours and day/night brightness are set in a web UI at `http://elpris-led.local`.
 - Shows up as `elpris-led-xxxxxx` in the router, so it's easy to find.
 - Updates itself: new releases are found and installed automatically, for each board type.
-- Few API calls; cached prices are used if fetching fails, with automatic retries.
+- Few API calls; cached prices are used if fetching fails, with automatic retries. The web UI shows the reason when fetching fails.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
 - Handles daylight saving time correctly (23- and 25-hour days).
 
@@ -53,7 +55,7 @@ With several lamps on the same network, only one of them answers to `elpris-led.
 |---|---|
 | Whole strip pulses blue | Waiting for time or prices |
 | Whole strip pulses purple | No prices for now and fetching fails |
-| First three LEDs blink magenta | Fetching fails, cached prices still shown |
+| First three LEDs (from midnight) blink magenta | Fetching fails, cached prices still shown |
 | Dim cyan dots | Installing an update, the lamp restarts when done |
 
 Prices are spot prices excluding VAT, grid fees and energy tax.
@@ -82,7 +84,7 @@ Prices are spot prices excluding VAT, grid fees and energy tax.
                      (ESP32: GPIO16 / D16, ESP8266: GPIO2 / D4)
 ```
 
-The board and the strip must share ground. Connect the strip at the end where the arrows point away from you (DIN). Don't power the board from USB and the 5 V supply at the same time unless your board allows it: install over USB first, then connect the supply.
+The board and the strip must share ground. Connect the strip at the end where the arrows point away from you (DIN). The strip can be mounted with that end on either side; use *Reverse direction* in the web UI to make time run left to right. Don't power the board from USB and the 5 V supply at the same time unless your board allows it: install over USB first, then connect the supply.
 
 ## Updating
 
@@ -117,7 +119,7 @@ In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32
 
 Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
 
-The time, slot, night mode and version logic is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer:
+The time, slot, LED order, night mode and version logic is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer:
 
 ```bash
 make test            # unit tests

@@ -59,6 +59,12 @@ inline void ledSlotRange(int i, int winSlots, int numLeds, int& s0, int& s1) {
   if (s1 <= s0) s1 = s0 + 1;
 }
 
+// Physical LED on the strip for position i in time order. With reverse, time runs from the
+// last LED to the first, for strips mounted so that the data input is on the right.
+inline int physicalLed(int i, int numLeds, bool reverse) {
+  return reverse ? numLeds - 1 - i : i;
+}
+
 // Night mode, also when the interval crosses midnight. start == end means never night.
 inline bool isNightHour(int hour, int start, int end) {
   if (start > end) return hour >= start || hour < end;

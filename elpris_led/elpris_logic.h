@@ -59,6 +59,14 @@ inline void ledSlotRange(int i, int winSlots, int numLeds, int& s0, int& s1) {
   if (s1 <= s0) s1 = s0 + 1;
 }
 
+// Where an LED showing slots [s0, s1) is in time, relative to the current slot cur
+enum LedTime { LED_PAST, LED_NOW, LED_FUTURE };
+inline LedTime ledTimeState(int s0, int s1, int cur) {
+  if (cur >= s1) return LED_PAST;     // everything this LED shows has passed
+  if (cur >= s0) return LED_NOW;      // this LED shows the current 15 minutes
+  return LED_FUTURE;
+}
+
 // Physical LED on the strip for position i in time order. With reverse, time runs from the
 // last LED to the first, for strips mounted so that the data input is on the right.
 inline int physicalLed(int i, int numLeds, bool reverse) {

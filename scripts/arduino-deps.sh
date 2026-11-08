@@ -9,15 +9,18 @@ ESP8266_CORE="3.1.2"
 LIBS=("FastLED@3.10.8" "ArduinoJson@7.4.3" "WiFiManager@2.0.17")
 BOARD_URLS="https://espressif.github.io/arduino-esp32/package_esp32_index.json,https://arduino.esp8266.com/stable/package_esp8266com_index.json"
 
-# Downloads from GitHub and the board package servers sometimes time out; try a few times
+# The toolchains are large downloads from GitHub releases; give slow connections more time
+export ARDUINO_NETWORK_CONNECTION_TIMEOUT="300s"
+
+# Downloads from GitHub and the board package servers sometimes time out or return 503; try a few times
 retry() {
   local attempt
-  for attempt in 1 2 3; do
+  for attempt in 1 2 3 4 5; do
     if "$@"; then return 0; fi
-    echo "::warning::Attempt $attempt failed: $*"
-    sleep $((attempt * 20))
+    echo "::warning::Attempt $attempt of 5 failed: $*"
+    sleep $((attempt * 30))
   done
-  echo "::error::Giving up after 3 attempts: $*"
+  echo "::error::Giving up after 5 attempts: $*. This is usually a temporary problem with the download servers; re-run the job later."
   return 1
 }
 

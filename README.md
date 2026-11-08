@@ -1,21 +1,22 @@
 # Elpris-LED
 
-An ESP32 and a WS2812B LED strip that show the day's Swedish spot electricity prices as colors, from green (cheap) to red (expensive). Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se).
+An ESP32 or ESP8266 and a WS2812B LED strip that show the day's Swedish spot electricity prices as colors, from green (cheap) to red (expensive). Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se).
 
 ## Getting started
 
-You don't need to compile anything. Every release is built and tested automatically, and there are three ways to get it onto your ESP32:
+You don't need to compile anything. Every release is built and tested automatically for both ESP32 and ESP8266, and there are three ways to get it onto your board:
 
-1. **Install page (easiest):** open [flysen.github.io/elpris-led](https://flysen.github.io/elpris-led/) in Chrome or Edge on a computer, plug in the ESP32 with USB and click *Install on ESP32*. Choose to erase the device on the first install.
-2. **Download a release:** get `elpris-led-<version>-esp32-full.bin` from [Releases](https://github.com/flysen/elpris-led/releases) and flash it at address 0x0 with any ESP flashing tool, for example:
+1. **Install page (easiest):** open [flysen.github.io/elpris-led](https://flysen.github.io/elpris-led/) in Chrome or Edge on a computer, plug in the board with USB and click *Install on your board*. The page detects whether it's an ESP32 or an ESP8266 and installs the right firmware. Choose to erase the device on the first install.
+2. **Download a release:** get the `-full.bin` file for your board from [Releases](https://github.com/flysen/elpris-led/releases) and flash it at address 0x0 with any ESP flashing tool, for example:
    ```bash
    pip install esptool
-   esptool.py --chip esp32 write_flash 0x0 elpris-led-<version>-esp32-full.bin
+   esptool.py write_flash 0x0 elpris-led-<version>-esp32-full.bin     # ESP32
+   esptool.py write_flash 0x0 elpris-led-<version>-esp8266-full.bin   # ESP8266
    ```
    Each release has a `SHA256SUMS` file if you want to verify the download.
 3. **Build it yourself:** see [Building from source](#building-from-source). Only needed if you want to change the code.
 
-If no USB port shows up, the computer needs a driver for the board's USB chip, usually CP210x or CH340. Some USB cables only charge; use one that carries data.
+If no USB port shows up, use a USB cable that carries data, not just power. On Windows and Mac the computer may need a driver for the board's USB chip, usually CP210x or CH340. On Linux, your user must be in the `dialout` group (`sudo usermod -a -G dialout $USER`, then log out and in).
 
 ### First start
 
@@ -30,7 +31,7 @@ If no USB port shows up, the computer needs a driver for the board's USB chip, u
 - The LED for the current 15 minutes pulses.
 - The color scale is relative to the period shown, so even a cheap day has red hours.
 - Price area, number of LEDs (up to 300), time zone, night mode hours and day/night brightness are set in a web UI.
-- Updates itself: new releases are found and installed automatically.
+- Updates itself: new releases are found and installed automatically, for each board type.
 - Few API calls; cached prices are used if fetching fails, with automatic retries.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
 - Handles daylight saving time correctly (23- and 25-hour days).
@@ -48,42 +49,64 @@ Prices are spot prices excluding VAT, grid fees and energy tax.
 
 ## Hardware
 
-- ESP32 dev board (classic ESP32 with 4 MB flash, e.g. DevKitC / WROOM-32; C3, S2 and S3 are not supported by the prebuilt firmware)
+**Board**, one of:
+
+| Board | Examples | Strip data pin | Notes |
+|---|---|---|---|
+| **ESP32** (recommended) | ESP32 DevKit, ESP32-WROOM-32, NodeMCU-32 | GPIO16 (marked D16 or RX2) | 4 MB flash. Not ESP32-C3, -S2 or -S3. More memory, so the most robust choice. |
+| **ESP8266** | NodeMCU, Wemos D1 mini | GPIO2 (marked D4) | Must have 4 MB flash (not ESP-01). Same pin as WLED uses. |
+
+**Also needed:**
+
 - WS2812B strip, 5 V, up to 300 LEDs, and a 5 V supply sized for it (up to 60 mA per LED at full white)
 - 330–470 Ω resistor in the data line, 1000 µF capacitor across +5 V/GND at the strip input
 
 ```
-5 V supply          ESP32                 WS2812B strip (DIN end)
+5 V supply          ESP32 / ESP8266            WS2812B strip (DIN end)
   +5V ─────┬──────── 5V / VIN
-           └───────────────────────────── +5V
+           └────────────────────────────────── +5V
   GND ─────┬──────── GND
-           └───────────────────────────── GND
-                     GPIO16 ── 330 Ω ──── DIN
+           └────────────────────────────────── GND
+                     data pin ── 330 Ω ────── DIN
+                     (ESP32: GPIO16 / D16, ESP8266: GPIO2 / D4)
 ```
 
-The ESP32 and the strip must share ground. Connect the strip at the end where the arrows point away from you (DIN). Don't power the ESP32 from USB and the 5 V supply at the same time unless your board allows it: install over USB first, then connect the supply.
+The board and the strip must share ground. Connect the strip at the end where the arrows point away from you (DIN). Don't power the board from USB and the 5 V supply at the same time unless your board allows it: install over USB first, then connect the supply.
 
 ## Updating
 
-- **Automatic (default):** the lamp checks for a new release two minutes after start and then once a day, and installs it by itself. Wifi and settings are kept. You can turn this off, or press *Check for updates now*, in the lamp's web UI. The current and latest version are shown there too.
+- **Automatic (default):** the lamp checks for a new release two minutes after start and then once a day, and installs the firmware for its own board by itself. Wifi and settings are kept. You can turn this off, or press *Check for updates now*, in the lamp's web UI. The current version, board and latest release are shown there too.
 - **Install page:** run it again and choose *not* to erase. Wifi and settings are kept.
-- **Arduino OTA:** if you've set an OTA password, upload `elpris-led-<version>-esp32-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with the Arduino IDE or `espota.py`.
+- **Arduino OTA:** if you've set an OTA password, upload `elpris-led-<version>-<board>-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with the Arduino IDE or `espota.py`.
 
 Builds you compile yourself, and CI builds, report version `dev` and never update automatically, so your own changes aren't overwritten. Flash a release to get back on automatic updates.
 
 ## Building from source
 
-Only needed if you want to change the code, for example to use another data pin (`DATA_PIN` in `elpris_led/elpris_led.ino`). With [arduino-cli](https://arduino.github.io/arduino-cli/) installed:
+Only needed if you want to change the code. One sketch, `elpris_led/`, builds for both boards; the few differences (includes, data pin, settings storage) are in `elpris_led/platform.h`. With [arduino-cli](https://arduino.github.io/arduino-cli/) installed:
 
 ```bash
-bash scripts/arduino-deps.sh          # ESP32 core and libraries at the pinned versions
-bash scripts/build-firmware.sh dev    # build, check and package into dist/ and site/
-arduino-cli upload --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs -p /dev/ttyUSB0 --input-dir build-out elpris_led
+bash scripts/arduino-deps.sh                # ESP32 and ESP8266 cores and libraries at the pinned versions
+bash scripts/build-firmware.sh dev esp32    # build and check one board into build-out/<board> and dist/
+bash scripts/build-firmware.sh dev esp8266
+bash scripts/package.sh dev                 # install page with manifest.json in site/, and dist/SHA256SUMS
 ```
 
-In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` under *Preferences*, install *esp32* in the Boards Manager and FastLED, ArduinoJson and WiFiManager (by tzapu) in the Library Manager, then open `elpris_led/elpris_led.ino`. Choose the board *ESP32 Dev Module* and under *Tools → Partition Scheme* choose **Minimal SPIFFS (1.9MB APP with OTA)**; the firmware doesn't fit the default scheme with room for OTA. Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
+To upload directly to a connected board:
 
-The time, slot, night mode and version logic is in `elpris_led/elpris_logic.h` and is tested on a regular computer:
+```bash
+arduino-cli upload --fqbn esp32:esp32:esp32:PartitionScheme=min_spiffs -p /dev/ttyUSB0 --input-dir build-out/esp32 elpris_led
+arduino-cli upload --fqbn esp8266:esp8266:nodemcuv2:eesz=4M1M -p /dev/ttyUSB0 --input-dir build-out/esp8266 elpris_led
+```
+
+In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32_index.json` and `https://arduino.esp8266.com/stable/package_esp8266com_index.json` under *Preferences*, install *esp32* and *esp8266* in the Boards Manager and FastLED, ArduinoJson and WiFiManager (by tzapu) in the Library Manager, then open `elpris_led/elpris_led.ino`. Board settings:
+
+- **ESP32:** board *ESP32 Dev Module*, *Partition Scheme* **Minimal SPIFFS (1.9MB APP with OTA)**.
+- **ESP8266:** board *NodeMCU 1.0 (ESP-12E Module)*, *Flash Size* **4MB (FS:1MB OTA:~1019KB)**.
+
+Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
+
+The time, slot, night mode and version logic is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer:
 
 ```bash
 make test            # unit tests
@@ -96,31 +119,33 @@ Every pull request and every push to `main` runs:
 
 - **tests:** the unit tests, normally and with sanitizers.
 - **lint:** shellcheck on the build scripts.
-- **firmware:** the same build and packaging as a release, with pinned dependencies. It checks that the app fits in the OTA partition, that the version is in the binary and that the install page manifest is valid. The firmware is attached to the run for 14 days, so you can try a pull request on your own lamp before releasing it.
+- **firmware:** the same build and packaging as a release, for both ESP32 and ESP8266, with pinned dependencies. For each board it checks that the app uses less than 95 % of its space (warning above 85 %), that the version is in the binary, and that the install page manifest is valid. The sizes are shown on the run's summary page, and the firmware is attached to the run for 14 days so you can try a pull request on your own lamp before releasing it.
 
-Dependabot opens pull requests when the GitHub Actions used here get new versions. The ESP32 core and library versions are bumped by hand in `scripts/arduino-deps.sh`.
+Dependabot opens pull requests when the GitHub Actions used here get new versions. The core and library versions are bumped by hand in `scripts/arduino-deps.sh`.
 
 ## Releases (for maintainers)
 
-Pushing a version tag checks the tag, runs the tests, builds the firmware with that version number, publishes a release with `-full.bin`, `-ota.bin` and `SHA256SUMS`, and updates the install page. Lamps in the field pick up the new version from the install page within a day.
+Pushing a version tag checks the tag, runs the tests, builds the firmware for both boards with that version number, publishes a release with `-full.bin` and `-ota.bin` per board plus `SHA256SUMS`, and updates the install page. Lamps in the field pick up the new version from the install page within a day.
 
 ```bash
 git tag v2.1
 git push origin v2.1
 ```
 
-Or in the browser: *Releases → Draft a new release*, type a new tag, choose `main` and publish.
+Or in the browser: *Releases → Draft a new release*, click *Tag*, type a new tag, click *Create new tag*, choose `main` and publish.
 
 The release stops before anything is published if:
 
 - the tag isn't `v2.1`, `v2.1.3` or `v2.1-rc1`,
 - the tagged commit isn't on `main`,
 - a stable tag isn't higher than the previous stable release (lamps would ignore it),
-- any test or build check fails.
+- any test or build check fails, for either board.
 
-**Release candidates** (`v2.1-rc1`) are published as pre-releases only. They don't update the install page and lamps never install them automatically. Flash the `-ota.bin` or `-full.bin` on your own lamp, and when it works, tag `v2.1` on the same commit. A lamp running `v2.1-rc1` moves on to `v2.1` by itself.
+**Release candidates** (`v2.1-rc1`) are published as pre-releases only. They don't update the install page and lamps never install them automatically. Flash the `-full.bin` on your own lamp, and when it works, tag `v2.1` on the same commit. A lamp running `v2.1-rc1` moves on to `v2.1` by itself.
 
-**Partition table:** the firmware uses the *Minimal SPIFFS* scheme (two 1.9 MB app slots). Automatic updates only replace the app, never the partition table, so this must not change in a release. If it ever has to, lamps need a USB install from the install page.
+**Flash layout:** ESP32 uses the *Minimal SPIFFS* partition scheme (two 1.9 MB app slots) and ESP8266 the *4MB (FS:1MB)* layout. Automatic updates only replace the app, never the flash layout, so these must not change in a release. If they ever have to, lamps need a USB install from the install page.
+
+**Install page paths:** lamps download `firmware/<board>/elpris-led.bin`. Lamps on v2.0 (ESP32 only) use `firmware/elpris-led.bin`, which the build keeps as a copy of the ESP32 app.
 
 One-time repository setup before the first release:
 

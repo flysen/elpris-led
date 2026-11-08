@@ -36,12 +36,28 @@ jobs:
 
       - uses: arduino/setup-arduino-cli@v2
 
-      - name: Install pinned ESP32 core and libraries
+      # The cores and toolchains are several hundred MB; keep them between runs.
+      # The key changes whenever a pinned version in arduino-deps.sh changes.
+      - name: Cache cores and libraries
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: arduino-${{ runner.os }}-${{ hashFiles('scripts/arduino-deps.sh') }}
+
+      - name: Install pinned cores and libraries
         run: bash scripts/arduino-deps.sh
 
       # Same build and packaging as a release, so a broken release is caught before tagging
-      - name: Build and package firmware
-        run: bash scripts/build-firmware.sh dev
+      - name: Build ESP32 firmware
+        run: bash scripts/build-firmware.sh dev esp32
+
+      - name: Build ESP8266 firmware
+        run: bash scripts/build-firmware.sh dev esp8266
+
+      - name: Package install page and checksums
+        run: bash scripts/package.sh dev
 
       # Lets you flash a pull request build on your own lamp before releasing it
       - uses: actions/upload-artifact@v7

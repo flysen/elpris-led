@@ -75,7 +75,7 @@
   .notice { display: block; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: .5rem; }
   .after-button { margin-top: 1.25rem; }
   .small { color: var(--muted); font-size: .95rem; }
-  ol { padding-left: 1.3rem; margin: 0; }
+  ol, ul { padding-left: 1.3rem; margin: 0 0 1rem; }
   li { margin-bottom: .6rem; }
   a { color: inherit; text-underline-offset: .2em; }
   footer { margin-top: 3rem; color: var(--muted); font-size: .95rem; }
@@ -92,14 +92,19 @@
 
   <section class="install">
     <h2>Install</h2>
-    <p>Connect your ESP32 to the computer with a USB cable and click the button. Installing works in Chrome and Edge on a computer.</p>
+    <p>Connect your board to the computer with a USB cable and click the button. The page detects which chip the board has and installs the right firmware. Installing works in Chrome and Edge on a computer.</p>
+    <p class="small">Supported boards:</p>
+    <ul class="small">
+      <li><strong>ESP32</strong> with 4 MB flash, e.g. ESP32 DevKit / WROOM-32 (not C3, S2 or S3). Strip data on GPIO16 (D16).</li>
+      <li><strong>ESP8266</strong> with 4 MB flash, e.g. NodeMCU or Wemos D1 mini. Strip data on GPIO2 (D4).</li>
+    </ul>
     <esp-web-install-button manifest="manifest.json">
-      <button slot="activate">Install on ESP32</button>
+      <button slot="activate">Install on your board</button>
       <span slot="unsupported" class="notice">This browser can't install over USB. Open the page in Chrome or Edge on a computer.</span>
       <span slot="not-allowed" class="notice">Installing requires the page to be opened over https.</span>
     </esp-web-install-button>
     <p class="small after-button">Choose to erase the device on the first install. When updating, wifi and settings are kept as long as you don't erase.</p>
-    <p class="small">No port to choose? The computer needs a driver for the board's USB chip, usually CP210x or CH340.</p>
+    <p class="small">No port to choose? Use a USB cable that carries data, not just power. On Windows and Mac the computer may need a driver for the board's USB chip, usually CP210x or CH340. On Linux, your user must be in the <code>dialout</code> group.</p>
   </section>
 
   <section>
@@ -110,6 +115,7 @@
       <li>The lamp joins your network, fetches the prices and starts showing colors.</li>
       <li>Find the lamp's IP address in your router and open it in a browser. Set an OTA password and a config portal password there.</li>
     </ol>
+    <p>New releases are installed automatically, so you only need this page once.</p>
   </section>
 
   <footer>

@@ -24,7 +24,8 @@ If no USB port shows up, use a USB cable that carries data, not just power. On W
 2. If no page opens, go to `http://192.168.4.1`. Choose your wifi and fill in price area (SE1–SE4), number of LEDs, night mode and brightness.
 3. The lamp joins your network, fetches prices and starts showing colors.
 4. Open **http://elpris-led.local** in a browser on the same network to change settings later. If that doesn't work (some Android phones and older Windows versions don't support `.local` names), look for **elpris-led-xxxxxx** in your router's list of devices and open its IP address. Set an **OTA password** and a **config portal password** right away; until then OTA is off and the portal is open.
-5. If time runs the wrong way for how the strip is mounted, tick **Reverse direction** in the web UI. By default midnight is at the end where the strip's cable is connected.
+5. Check that **Number of LEDs** matches your strip. If it's too high, part of the day ends up past the end of the strip.
+6. If time runs the wrong way for how the strip is mounted, tick **Reverse direction** in the web UI. By default midnight is at the end where the strip's cable is connected.
 
 ### Finding the lamp on the network
 
@@ -36,13 +37,22 @@ If no USB port shows up, use a USB cable that carries data, not just power. On W
 
 With several lamps on the same network, only one of them answers to `elpris-led.local`. Use the router names and IP addresses for the others; the web UI of each lamp shows its own name and IP address.
 
+## Reading the strip
+
+- The strip runs from midnight today to midnight tonight, or to midnight tomorrow once tomorrow's prices are published (usually after lunch).
+- **Green** is the cheapest and **red** the most expensive time in the period shown.
+- The LED for **the current 15 minutes pulses towards white**.
+- **Time that has passed is dimmed**, so the hours that are left, the ones worth planning around, stand out.
+
+The white pulse and the dimming can each be turned off in the web UI.
+
 ## Features
 
-- Shows today from midnight to midnight along the strip, and tomorrow too once prices are published (usually after lunch).
-- The LED for the current 15 minutes pulses.
+- Shows today from midnight to midnight along the strip, and tomorrow too once prices are published.
+- "Now" is easy to see: a white pulse on the current 15 minutes, and dimmed past hours.
 - The color scale is relative to the period shown, so even a cheap day has red hours.
 - The direction can be reversed, so time reads left to right however the strip is mounted.
-- Price area, number of LEDs (up to 300), direction, time zone, night mode hours and day/night brightness are set in a web UI at `http://elpris-led.local`.
+- Price area, number of LEDs (up to 300), direction, how "now" is shown, time zone, night mode hours and day/night brightness are set in a web UI at `http://elpris-led.local`.
 - Shows up as `elpris-led-xxxxxx` in the router, so it's easy to find.
 - Updates itself: new releases are found within six hours and installed automatically, for each board type.
 - Few API calls; cached prices are used if fetching fails, with automatic retries. The web UI shows the reason when fetching fails.
@@ -120,7 +130,7 @@ In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32
 
 Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
 
-The time, slot, LED order, night mode and version logic is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer:
+The time, slot, LED order, past/now/future, night mode and version logic is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer:
 
 ```bash
 make test            # unit tests

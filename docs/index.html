@@ -51,8 +51,9 @@
     border-radius: 999px;
   }
   .led { aspect-ratio: 1; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  .led.past { opacity: .3; box-shadow: none; }
   .led.now { animation: pulse 2s ease-in-out infinite; }
-  @keyframes pulse { 50% { opacity: .3; } }
+  @keyframes pulse { 50% { background: #fff; box-shadow: 0 0 10px #fff; } }
   @media (prefers-reduced-motion: reduce) {
     .led.now { animation: none; outline: 2px solid #fff; outline-offset: 1px; }
   }
@@ -86,9 +87,9 @@
   <h1>Elpris-LED</h1>
   <p class="lead">An LED strip that shows the day's electricity prices in color. Green when power is cheap, red when it's expensive.</p>
 
-  <div class="strip" id="strip" role="img" aria-label="Example of the strip: green at night and midday, red at the morning and evening peaks"></div>
+  <div class="strip" id="strip" role="img" aria-label="Example of the strip: green at night and midday, red at the morning and evening peaks. Passed hours are dimmed and the current time pulses white."></div>
   <div class="hours" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
-  <p class="caption">An example day. The pulsing LED is right now.</p>
+  <p class="caption">An example day. Passed hours are dimmed, and the LED pulsing white is right now.</p>
 
   <section class="install">
     <h2>Install</h2>
@@ -113,7 +114,7 @@
       <li>The strip pulses blue and the lamp starts its own wifi called <strong>Elpris-LED-Config</strong>. Connect to it with your phone.</li>
       <li>If no page opens automatically, go to 192.168.4.1. Choose your wifi and fill in price area and number of LEDs.</li>
       <li>The lamp joins your network, fetches the prices and starts showing colors.</li>
-      <li>Open <strong>http://elpris-led.local</strong> in a browser on the same network. If that doesn't work, look for <strong>elpris-led-xxxxxx</strong> in your router's device list and open its IP address. Set an OTA password and a config portal password there.</li>
+      <li>Open <strong>http://elpris-led.local</strong> in a browser on the same network. If that doesn't work, look for <strong>elpris-led-xxxxxx</strong> in your router's device list and open its IP address. Set an OTA password and a config portal password there, and tick <em>Reverse direction</em> if time runs the wrong way.</li>
     </ol>
     <p>New releases are installed automatically, so you only need this page once.</p>
   </section>
@@ -137,7 +138,7 @@
   const mn = Math.min(...prices), mx = Math.max(...prices);
   prices.forEach((p, i) => {
     const led = document.createElement('span');
-    led.className = 'led' + (i === nowIdx ? ' now' : '');
+    led.className = 'led' + (i === nowIdx ? ' now' : i < nowIdx ? ' past' : '');
     const hue = Math.round((1 - (p - mn) / (mx - mn)) * 120);
     led.style.setProperty('--c', `hsl(${hue} 85% 52%)`);
     strip.appendChild(led);

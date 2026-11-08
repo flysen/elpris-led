@@ -1,4 +1,4 @@
-// Elpris-LED v2
+// Elpris-LED v3
 // Runs on ESP32 and ESP8266. Board differences are in platform.h.
 // Requires: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 or ESP8266 Arduino core
 //
@@ -6,6 +6,8 @@
 //  - Configurable time zone (web + WiFiManager), stored in flash
 //  - Configurable LED count (max MAX_LEDS), 15-minute prices are scaled to the strip
 //  - Configurable direction, so time can run left to right however the strip is mounted
+//  - The current 15 minutes pulses towards white and the time that has passed is dimmed,
+//    so "now" is easy to see (both can be turned off)
 //  - Few API calls: today's prices once a day, tomorrow's from 13:30 until they are available
 //  - Prices are read one at a time from the response, so it fits in ESP8266 memory
 //  - Exponential backoff + visual error indication, last error shown in the web UI
@@ -52,6 +54,11 @@ const int TOMORROW_FETCH_MIN = 13 * 60 + 30;  // start looking for tomorrow's pr
 const int TOMORROW_ERROR_MIN = 16 * 60;       // missing tomorrow prices count as an error only after 16:00
 const int STATUS_LEDS        = 3;             // number of LEDs that blink magenta on fetch errors
 
+// How "now" is shown
+const uint8_t PAST_BRIGHTNESS  = 64;    // passed time at 25 % of full brightness (out of 255)
+const uint8_t PULSE_BPM        = 30;    // one pulse every 2 seconds
+const uint8_t PULSE_WHITE_MAX  = 220;   // how far towards white the current LED goes (out of 255)
+
 const unsigned long NOT_PUBLISHED_RETRY_MS  = 15UL * 60UL * 1000UL;
 
 // Our own fetch error codes. HTTPClient uses -1 to -11, so these start at -100.
@@ -94,6 +101,8 @@ int  cfgBrightDay   = 40;
 int  cfgBrightNight = 5;
 int  cfgNumLeds     = 100;
 bool cfgReverse     = false;  // true = time runs from the last LED to the first
+bool cfgPulseWhite  = true;   // true = the current LED pulses towards white, false = in its own color
+bool cfgDimPast     = true;   // true = time that has passed is shown dimmed
 bool cfgAutoUpdate  = true;
 char cfgOtaPw[33]   = "";   // empty = OTA disabled
 char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
@@ -157,6 +166,8 @@ void loadSettings() {
   cfgBrightNight = preferences.getInt("bnight", 5);
   cfgNumLeds     = preferences.getInt("leds", 100);
   cfgReverse     = preferences.getBool("reverse", false);
+  cfgPulseWhite  = preferences.getBool("pulsewh", true);
+  cfgDimPast     = preferences.getBool("dimpast", true);
   cfgAutoUpdate  = preferences.getBool("autoupd", true);
   preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
   preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
@@ -172,6 +183,8 @@ void saveSettings() {
   preferences.putInt("bnight", cfgBrightNight);
   preferences.putInt("leds", cfgNumLeds);
   preferences.putBool("reverse", cfgReverse);
+  preferences.putBool("pulsewh", cfgPulseWhite);
+  preferences.putBool("dimpast", cfgDimPast);
   preferences.putBool("autoupd", cfgAutoUpdate);
   preferences.putString("otapw", cfgOtaPw);
   preferences.putString("appw", cfgApPw);
@@ -444,6 +457,18 @@ void rebuildTimeline(time_t now) {
   }
 }
 
+// Color for one LED, given where it is in time: dimmed if it has passed, pulsing if it is now
+CRGB displayColor(const CRGB& priceColor, LedTime when) {
+  CRGB c = priceColor;
+  if (when == LED_NOW) {
+    if (cfgPulseWhite) c = blend(c, CRGB::White, beatsin8(PULSE_BPM, 0, PULSE_WHITE_MAX));   // price color <-> white
+    else               c.nscale8(beatsin8(PULSE_BPM, 30, 255));                              // brighter <-> darker
+  } else if (when == LED_PAST && cfgDimPast) {
+    c.nscale8(PAST_BRIGHTNESS);
+  }
+  return c;
+}
+
 // =====================================================================
 //  Web interface
 // =====================================================================
@@ -461,6 +486,11 @@ String htmlEscape(const String& s) {
     }
   }
   return o;
+}
+
+String checkbox(const char* name, bool checked, const char* label, const char* help) {
+  return String("<p><label><input type='checkbox' name='") + name + "' value='1'" + (checked ? " checked" : "") + ">" +
+         label + "</label><br><small>" + help + "</small></p>";
 }
 
 void handleRoot() {
@@ -481,7 +511,7 @@ void handleRoot() {
   else if (restartingForUpdate) refresh = "<meta http-equiv='refresh' content='30;url=/'>";
 
   String html;
-  html.reserve(8000);
+  html.reserve(8500);
   html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>" + refresh;
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
@@ -513,8 +543,12 @@ void handleRoot() {
 
   html += "<label>Number of LEDs (changing it restarts the device):</label><input type='number' name='leds' min='1' max='" + String(MAX_LEDS) + "' value='" + String(cfgNumLeds) + "'>";
 
-  html += "<p><label><input type='checkbox' name='reverse' value='1'" + String(cfgReverse ? " checked" : "") + ">Reverse direction</label>";
-  html += "<br><small>Normally midnight is at the end where the strip's cable is connected. Tick this if time runs the wrong way, e.g. right to left.</small></p>";
+  html += checkbox("reverse", cfgReverse, "Reverse direction",
+                   "Normally midnight is at the end where the strip's cable is connected. Tick this if time runs the wrong way, e.g. right to left.");
+  html += checkbox("pulsewh", cfgPulseWhite, "Pulse the current 15 minutes towards white",
+                   "Makes \"now\" stand out against any price color. Untick to pulse in the price color instead.");
+  html += checkbox("dimpast", cfgDimPast, "Dim the time that has passed",
+                   "Passed hours are shown at a quarter of the brightness, so the hours that are left stand out.");
 
   html += "<label>Time zone (presets):</label><select onchange=\"if(this.value)document.getElementById('tz').value=this.value\">";
   html += "<option value=''>Choose...</option>";
@@ -556,6 +590,8 @@ void handleSave() {
   if (server.hasArg("bnight")) cfgBrightNight = server.arg("bnight").toInt();
   if (server.hasArg("leds"))   cfgNumLeds     = server.arg("leds").toInt();
   cfgReverse    = server.hasArg("reverse");   // unchecked boxes are not sent
+  cfgPulseWhite = server.hasArg("pulsewh");
+  cfgDimPast    = server.hasArg("dimpast");
   cfgAutoUpdate = server.hasArg("autoupd");
 
   if (server.hasArg("otapw") && server.arg("otapw").length() > 0) {
@@ -734,9 +770,7 @@ void loop() {
   for (int i = 0; i < cfgNumLeds; i++) {
     int s0, s1;
     ledRange(i, s0, s1);
-    CRGB c = ledColor[i];
-    if (cur >= s0 && cur < s1) c.nscale8(beatsin8(30, 30, 255));
-    leds[physicalLed(i, cfgNumLeds, cfgReverse)] = c;
+    leds[physicalLed(i, cfgNumLeds, cfgReverse)] = displayColor(ledColor[i], ledTimeState(s0, s1, cur));
   }
 
   // Error indicator on the first LEDs in time order, so it follows the chosen direction too

@@ -1,10 +1,12 @@
 // Tests for elpris_led/elpris_logic.h that run on a regular computer: make test
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 #include "../elpris_led/elpris_logic.h"
 
 static int passed = 0, failed = 0;
+static const char* SWEDEN_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // the lamp's default
 
 static void check(const char* name, long long actual, long long expected) {
   if (actual == expected) { passed++; printf("OK   %s\n", name); }
@@ -17,6 +19,11 @@ static time_t utc(int Y, int M, int D, int h, int m) {
   struct tm t = {};
   t.tm_year = Y - 1900; t.tm_mon = M - 1; t.tm_mday = D; t.tm_hour = h; t.tm_min = m;
   return timegm(&t);
+}
+
+static void useTimeZone(const char* tz) {
+  setenv("TZ", tz, 1);
+  tzset();
 }
 
 static void testDaysFromCivil() {
@@ -68,6 +75,64 @@ static void testDayLengths() {
   time_t dayBefore = utc(2026, 3, 28, 11, 0);
   check("48 h window across the DST change: 188 slots",
         localMidnightSlot(dayBefore, 2) - localMidnightSlot(dayBefore, 0), 188);
+}
+
+// Every time zone in the web UI's list: local midnight at the right UTC time in winter and summer,
+// and 23/25-hour days on the EU change days (last Sunday of March and October) where DST applies.
+static void testTimeZones() {
+  struct Expected { const char* tz; int winterOffsetMin; int summerOffsetMin; bool dst; };
+  const Expected expected[] = {
+    {"CET-1CEST,M3.5.0,M10.5.0/3",   60, 120, true},
+    {"EET-2EEST,M3.5.0/3,M10.5.0/4", 120, 180, true},
+    {"GMT0BST,M3.5.0/1,M10.5.0",     0,  60,  true},
+    {"UTC0",                         0,  0,   false},
+  };
+  const int expectedCount = sizeof(expected) / sizeof(expected[0]);
+
+  check("TIME_ZONES: every listed time zone has expected values in the test", TIME_ZONE_COUNT, expectedCount);
+  checkTrue("TIME_ZONES: the first (default) is Swedish time", strcmp(TIME_ZONES[0].tz, SWEDEN_TZ) == 0);
+
+  for (int z = 0; z < TIME_ZONE_COUNT; z++) {
+    const TimeZoneChoice& zone = TIME_ZONES[z];
+    char name[160];
+
+    const Expected* e = nullptr;
+    for (int k = 0; k < expectedCount; k++) if (strcmp(expected[k].tz, zone.tz) == 0) e = &expected[k];
+    snprintf(name, sizeof(name), "%s: has expected values in the test", zone.label);
+    checkTrue(name, e != nullptr);
+    if (!e) continue;
+
+    snprintf(name, sizeof(name), "%s: has a label", zone.tz);
+    checkTrue(name, zone.label[0] != '\0');
+    for (int other = 0; other < z; other++) {
+      snprintf(name, sizeof(name), "%s: listed only once", zone.label);
+      checkTrue(name, strcmp(TIME_ZONES[other].tz, zone.tz) != 0);
+    }
+
+    useTimeZone(zone.tz);
+
+    time_t winterNoon = utc(2026, 1, 15, 12, 0);
+    snprintf(name, sizeof(name), "%s: midnight 2026-01-15 at the right UTC time", zone.label);
+    check(name, localMidnightSlot(winterNoon, 0), (utc(2026, 1, 15, 0, 0) - e->winterOffsetMin * 60) / SLOT_SEC);
+
+    time_t summerNoon = utc(2026, 7, 15, 12, 0);
+    snprintf(name, sizeof(name), "%s: midnight 2026-07-15 at the right UTC time", zone.label);
+    check(name, localMidnightSlot(summerNoon, 0), (utc(2026, 7, 15, 0, 0) - e->summerOffsetMin * 60) / SLOT_SEC);
+
+    time_t spring = utc(2026, 3, 29, 12, 0);
+    snprintf(name, sizeof(name), "%s: 2026-03-29 has %d slots", zone.label, e->dst ? 92 : 96);
+    check(name, localMidnightSlot(spring, 1) - localMidnightSlot(spring, 0), e->dst ? 92 : 96);
+
+    time_t autumn = utc(2026, 10, 25, 12, 0);
+    snprintf(name, sizeof(name), "%s: 2026-10-25 has %d slots", zone.label, e->dst ? 100 : 96);
+    check(name, localMidnightSlot(autumn, 1) - localMidnightSlot(autumn, 0), e->dst ? 100 : 96);
+
+    time_t ordinary = utc(2026, 11, 9, 12, 0);
+    snprintf(name, sizeof(name), "%s: an ordinary day has 96 slots", zone.label);
+    check(name, localMidnightSlot(ordinary, 1) - localMidnightSlot(ordinary, 0), 96);
+  }
+
+  useTimeZone(SWEDEN_TZ);
 }
 
 static void testLedSlotRange() {
@@ -168,6 +233,15 @@ static void testPercentToScale() {
   checkTrue("percentToScale: never decreases from 0 to 100 %", ok);
 }
 
+static void testInitialPastPercent() {
+  check("initialPastPercent: new lamp gets the default", initialPastPercent(false, 0, true, 10), 10);
+  check("initialPastPercent: v3.0 lamp with dimming on gets the default", initialPastPercent(false, 0, true, 10), 10);
+  check("initialPastPercent: v3.0 lamp with dimming off keeps full brightness", initialPastPercent(false, 0, false, 10), 100);
+  check("initialPastPercent: a saved value wins", initialPastPercent(true, 35, true, 10), 35);
+  check("initialPastPercent: a saved 0 % (off) wins", initialPastPercent(true, 0, true, 10), 0);
+  check("initialPastPercent: a saved value wins over old dimming off", initialPastPercent(true, 50, false, 10), 50);
+}
+
 static void testIsNightHour() {
   checkTrue("isNightHour 23-6: 23 is night", isNightHour(23, 23, 6));
   checkTrue("isNightHour 23-6: 0 is night", isNightHour(0, 23, 6));
@@ -238,17 +312,18 @@ static void testVersions() {
 }
 
 int main() {
-  setenv("TZ", "CET-1CEST,M3.5.0,M10.5.0/3", 1);   // same as the lamp's default
-  tzset();
+  useTimeZone(SWEDEN_TZ);   // same as the lamp's default
 
   testDaysFromCivil();
   testParseIso();
   testPriceSlots();
   testDayLengths();
+  testTimeZones();
   testLedSlotRange();
   testLedTimeState();
   testPhysicalLed();
   testPercentToScale();
+  testInitialPastPercent();
   testIsNightHour();
   testBackoff();
   testValidArea();

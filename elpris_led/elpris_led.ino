@@ -6,8 +6,8 @@
 //  - Configurable time zone (web + WiFiManager), stored in flash
 //  - Configurable LED count (max MAX_LEDS), 15-minute prices are scaled to the strip
 //  - Configurable direction, so time can run left to right however the strip is mounted
-//  - The current 15 minutes pulses towards white and the time that has passed is dimmed,
-//    so "now" is easy to see (both can be turned off)
+//  - The current 15 minutes pulses towards white and the time that has passed is dimmed to an
+//    adjustable brightness, so "now" is easy to see
 //  - Few API calls: today's prices once a day, tomorrow's from 13:30 until they are available
 //  - Prices are read one at a time from the response, so it fits in ESP8266 memory
 //  - Exponential backoff + visual error indication, last error shown in the web UI
@@ -55,7 +55,7 @@ const int TOMORROW_ERROR_MIN = 16 * 60;       // missing tomorrow prices count a
 const int STATUS_LEDS        = 3;             // number of LEDs that blink magenta on fetch errors
 
 // How "now" is shown
-const uint8_t PAST_BRIGHTNESS  = 64;    // passed time at 25 % of full brightness (out of 255)
+const int     DEFAULT_PAST_PCT = 10;    // passed time at 10 % of normal brightness, unless set otherwise
 const uint8_t PULSE_BPM        = 30;    // one pulse every 2 seconds
 const uint8_t PULSE_WHITE_MAX  = 220;   // how far towards white the current LED goes (out of 255)
 
@@ -102,7 +102,7 @@ int  cfgBrightNight = 5;
 int  cfgNumLeds     = 100;
 bool cfgReverse     = false;  // true = time runs from the last LED to the first
 bool cfgPulseWhite  = true;   // true = the current LED pulses towards white, false = in its own color
-bool cfgDimPast     = true;   // true = time that has passed is shown dimmed
+int  cfgPastPct     = DEFAULT_PAST_PCT;  // brightness of passed time in percent: 100 = not dimmed, 0 = off
 bool cfgAutoUpdate  = true;
 char cfgOtaPw[33]   = "";   // empty = OTA disabled
 char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
@@ -150,6 +150,7 @@ void sanitizeSettings() {
   cfgBrightDay   = constrain(cfgBrightDay, 1, 255);
   cfgBrightNight = constrain(cfgBrightNight, 0, 255);
   cfgNumLeds     = constrain(cfgNumLeds, 1, MAX_LEDS);
+  cfgPastPct     = constrain(cfgPastPct, 0, 100);
 
   if (strlen(cfgTz) < 3) strlcpy(cfgTz, DEFAULT_TZ, sizeof(cfgTz));
   if (strlen(cfgApPw) > 0 && strlen(cfgApPw) < 8) cfgApPw[0] = '\0';   // WPA2 requires at least 8 characters
@@ -167,7 +168,9 @@ void loadSettings() {
   cfgNumLeds     = preferences.getInt("leds", 100);
   cfgReverse     = preferences.getBool("reverse", false);
   cfgPulseWhite  = preferences.getBool("pulsewh", true);
-  cfgDimPast     = preferences.getBool("dimpast", true);
+  // v3.0 had an on/off setting for dimming; a lamp that had it off keeps full brightness (100 %)
+  bool oldDimPast = preferences.getBool("dimpast", true);
+  cfgPastPct     = preferences.getInt("pastpct", oldDimPast ? DEFAULT_PAST_PCT : 100);
   cfgAutoUpdate  = preferences.getBool("autoupd", true);
   preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
   preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
@@ -184,7 +187,7 @@ void saveSettings() {
   preferences.putInt("leds", cfgNumLeds);
   preferences.putBool("reverse", cfgReverse);
   preferences.putBool("pulsewh", cfgPulseWhite);
-  preferences.putBool("dimpast", cfgDimPast);
+  preferences.putInt("pastpct", cfgPastPct);
   preferences.putBool("autoupd", cfgAutoUpdate);
   preferences.putString("otapw", cfgOtaPw);
   preferences.putString("appw", cfgApPw);
@@ -463,8 +466,8 @@ CRGB displayColor(const CRGB& priceColor, LedTime when) {
   if (when == LED_NOW) {
     if (cfgPulseWhite) c = blend(c, CRGB::White, beatsin8(PULSE_BPM, 0, PULSE_WHITE_MAX));   // price color <-> white
     else               c.nscale8(beatsin8(PULSE_BPM, 30, 255));                              // brighter <-> darker
-  } else if (when == LED_PAST && cfgDimPast) {
-    c.nscale8(PAST_BRIGHTNESS);
+  } else if (when == LED_PAST && cfgPastPct < 100) {
+    c.nscale8(percentToScale(cfgPastPct));
   }
   return c;
 }
@@ -547,8 +550,10 @@ void handleRoot() {
                    "Normally midnight is at the end where the strip's cable is connected. Tick this if time runs the wrong way, e.g. right to left.");
   html += checkbox("pulsewh", cfgPulseWhite, "Pulse the current 15 minutes towards white",
                    "Makes \"now\" stand out against any price color. Untick to pulse in the price color instead.");
-  html += checkbox("dimpast", cfgDimPast, "Dim the time that has passed",
-                   "Passed hours are shown at a quarter of the brightness, so the hours that are left stand out.");
+
+  html += "<label>Brightness of passed time (0-100 %):</label><input type='number' name='pastpct' min='0' max='100' value='" + String(cfgPastPct) + "'>";
+  html += "<p><small>Time that has passed is shown at this share of the normal brightness, so the hours that are left stand out. "
+          "100 = not dimmed, 0 = off. The eye sees brightness logarithmically, so 10 % looks clearly dimmed but not dark.</small></p>";
 
   html += "<label>Time zone (presets):</label><select onchange=\"if(this.value)document.getElementById('tz').value=this.value\">";
   html += "<option value=''>Choose...</option>";
@@ -582,16 +587,16 @@ void handleSave() {
   int oldLeds = cfgNumLeds;
   bool otaPwChanged = false;
 
-  if (server.hasArg("area"))   server.arg("area").toCharArray(cfgArea, sizeof(cfgArea));
-  if (server.hasArg("tz"))     server.arg("tz").toCharArray(cfgTz, sizeof(cfgTz));
-  if (server.hasArg("nstart")) cfgNightStart  = server.arg("nstart").toInt();
-  if (server.hasArg("nend"))   cfgNightEnd    = server.arg("nend").toInt();
-  if (server.hasArg("bday"))   cfgBrightDay   = server.arg("bday").toInt();
-  if (server.hasArg("bnight")) cfgBrightNight = server.arg("bnight").toInt();
-  if (server.hasArg("leds"))   cfgNumLeds     = server.arg("leds").toInt();
+  if (server.hasArg("area"))    server.arg("area").toCharArray(cfgArea, sizeof(cfgArea));
+  if (server.hasArg("tz"))      server.arg("tz").toCharArray(cfgTz, sizeof(cfgTz));
+  if (server.hasArg("nstart"))  cfgNightStart  = server.arg("nstart").toInt();
+  if (server.hasArg("nend"))    cfgNightEnd    = server.arg("nend").toInt();
+  if (server.hasArg("bday"))    cfgBrightDay   = server.arg("bday").toInt();
+  if (server.hasArg("bnight"))  cfgBrightNight = server.arg("bnight").toInt();
+  if (server.hasArg("leds"))    cfgNumLeds     = server.arg("leds").toInt();
+  if (server.hasArg("pastpct")) cfgPastPct     = server.arg("pastpct").toInt();
   cfgReverse    = server.hasArg("reverse");   // unchecked boxes are not sent
   cfgPulseWhite = server.hasArg("pulsewh");
-  cfgDimPast    = server.hasArg("dimpast");
   cfgAutoUpdate = server.hasArg("autoupd");
 
   if (server.hasArg("otapw") && server.arg("otapw").length() > 0) {

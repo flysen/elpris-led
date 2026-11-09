@@ -2,6 +2,8 @@
 
 An ESP32 or ESP8266 and a WS2812B LED strip that show the day's Swedish spot electricity prices as colors, from green (cheap) to red (expensive). Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se).
 
+What's new in each version: see [CHANGELOG.md](CHANGELOG.md).
+
 ## Getting started
 
 You don't need to compile anything. Every release is built and tested automatically for both ESP32 and ESP8266, and there are three ways to get it onto your board:
@@ -26,6 +28,7 @@ If no USB port shows up, use a USB cable that carries data, not just power. On W
 4. Open **http://elpris-led.local** in a browser on the same network to change settings later. If that doesn't work (some Android phones and older Windows versions don't support `.local` names, and browser VPNs block them), look for **elpris-led-xxxxxx** in your router's list of devices and open its IP address. Set an **OTA password** and a **config portal password** right away; until then OTA is off and the portal is open.
 5. Check that **Number of LEDs** matches your strip. If it's too high, part of the day ends up past the end of the strip.
 6. If time runs the wrong way for how the strip is mounted, tick **Reverse direction** in the web UI. By default midnight is at the end where the strip's cable is connected.
+7. The lamp uses Swedish time by default. If it's somewhere else, choose **Time zone** in the web UI: Sweden/Norway/Denmark/Central Europe, Finland/Baltics, United Kingdom/Ireland, or UTC. Daylight saving time is handled automatically.
 
 ### Finding the lamp on the network
 
@@ -46,18 +49,34 @@ With several lamps on the same network, only one of them answers to `elpris-led.
 
 In the web UI you can turn the white pulse off, and set **Brightness of passed time** anywhere from 0 % (passed time off) to 100 % (not dimmed).
 
+## Settings in the web UI
+
+| Setting | What it does |
+|---|---|
+| Price area | SE1–SE4, the bidding zone whose prices are shown |
+| Number of LEDs | How many LEDs the strip has (up to 300); changing it restarts the lamp |
+| Reverse direction | Which end of the strip is midnight |
+| Pulse the current 15 minutes towards white | Off: the current LED pulses in its own price color instead |
+| Brightness of passed time | 0–100 % of normal brightness, default 10 % |
+| Time zone | Where the lamp is, so the strip starts at local midnight; Swedish time by default |
+| Night mode start / end | Hours when the night brightness is used |
+| Day / night brightness | Overall brightness of the strip, 0–255 |
+| Install new releases automatically | On by default |
+| OTA password | Turns on updates from the Arduino IDE; empty means off |
+| Config portal password | Protects the *Elpris-LED-Config* wifi that opens when the lamp can't reach your network |
+
 ## Features
 
 - Shows today from midnight to midnight along the strip, and tomorrow too once prices are published.
 - "Now" is easy to see: a white pulse on the current 15 minutes, and dimmed past hours with adjustable brightness.
 - The color scale is relative to the period shown, so even a cheap day has red hours.
 - The direction can be reversed, so time reads left to right however the strip is mounted.
-- Price area, number of LEDs (up to 300), direction, how "now" is shown, brightness of passed time, time zone, night mode hours and day/night brightness are set in a web UI at `http://elpris-led.local`.
+- Time zone chosen from a list with plain names; daylight saving time and 23- and 25-hour days are handled.
+- All settings in a web UI at `http://elpris-led.local` (see the table above).
 - Shows up as `elpris-led-xxxxxx` in the router, so it's easy to find.
 - Updates itself: new releases are found within six hours and installed automatically, for each board type.
 - Few API calls; cached prices are used if fetching fails, with automatic retries. The web UI shows the reason when fetching fails.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
-- Handles daylight saving time correctly (23- and 25-hour days).
 
 ## Status colors
 
@@ -130,12 +149,14 @@ In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32
 
 Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
 
-The time, slot, LED order, past/now/future, dimming, night mode and version logic is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer:
+The logic that doesn't need the hardware is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer: time and daylight saving time, 15-minute slots, LED order and direction, past/now/future, dimming, the time zone list (offsets and DST change days for every zone), settings carried over from older versions, night mode and version comparison.
 
 ```bash
 make test            # unit tests
 make test-sanitize   # the same tests with AddressSanitizer and UndefinedBehaviorSanitizer
 ```
+
+To add a time zone, add it to `TIME_ZONES` in `elpris_logic.h` and its expected offsets to `testTimeZones()` in `tests/test_logic.cpp`; the tests fail if a listed zone has no expected values.
 
 ### Continuous integration
 
@@ -147,6 +168,10 @@ Every pull request and every push to `main` runs:
 
 Dependabot opens pull requests when the GitHub Actions used here get new versions. The core and library versions are bumped by hand in `scripts/arduino-deps.sh`.
 
+### Contributing
+
+New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout.
+
 ## Releases (for maintainers)
 
 Pushing a version tag checks the tag, runs the tests, builds the firmware for both boards with that version number, publishes a release with `-full.bin` and `-ota.bin` per board plus `SHA256SUMS`, and updates the install page. Lamps in the field pick up the new version from the install page within six hours.
@@ -157,6 +182,8 @@ git push origin v2.1
 ```
 
 Or in the browser: *Releases → Draft a new release*, click *Tag*, type a new tag, click *Create new tag*, choose `main` and publish.
+
+Before tagging, rename *Unreleased* in `CHANGELOG.md` to the new version (in a pull request), and paste that section into the release notes.
 
 The release stops before anything is published if:
 

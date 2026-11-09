@@ -42,19 +42,10 @@
 #define COLOR_ORDER  GRB
 
 // ---------- CONSTANTS ----------
-// SLOT_SEC and the backoff times are in elpris_logic.h
+// SLOT_SEC, the backoff times and the TIME_ZONES list are in elpris_logic.h
 const char* NTP_SERVER = "pool.ntp.org";
-const char* DEFAULT_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // Sweden
+const char* DEFAULT_TZ = TIME_ZONES[0].tz;               // Sweden
 const char* MDNS_NAME  = "elpris-led";                   // reachable as http://elpris-led.local
-
-// Time zones offered in the web UI. The value is a POSIX TZ rule, which includes daylight saving time.
-struct TimeZoneChoice { const char* label; const char* tz; };
-const TimeZoneChoice TIME_ZONES[] = {
-  {"Sweden, Norway, Denmark, Central Europe", "CET-1CEST,M3.5.0,M10.5.0/3"},
-  {"Finland, Estonia, Latvia, Lithuania",     "EET-2EEST,M3.5.0/3,M10.5.0/4"},
-  {"United Kingdom, Ireland",                 "GMT0BST,M3.5.0/1,M10.5.0"},
-  {"UTC (no daylight saving time)",           "UTC0"},
-};
 
 const int SLOTS_PER_DAY   = 96;
 const int RING_SIZE       = PRICE_CACHE_SLOTS;   // per board, see platform.h
@@ -176,9 +167,10 @@ void loadSettings() {
   cfgNumLeds     = preferences.getInt("leds", 100);
   cfgReverse     = preferences.getBool("reverse", false);
   cfgPulseWhite  = preferences.getBool("pulsewh", true);
-  // v3.0 had an on/off setting for dimming; a lamp that had it off keeps full brightness (100 %)
-  bool oldDimPast = preferences.getBool("dimpast", true);
-  cfgPastPct     = preferences.getInt("pastpct", oldDimPast ? DEFAULT_PAST_PCT : 100);
+  // v3.0 had an on/off setting for dimming instead of a percentage; see initialPastPercent()
+  int savedPastPct = preferences.getInt("pastpct", -1);
+  cfgPastPct     = initialPastPercent(savedPastPct >= 0, savedPastPct,
+                                      preferences.getBool("dimpast", true), DEFAULT_PAST_PCT);
   cfgAutoUpdate  = preferences.getBool("autoupd", true);
   preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
   preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
@@ -509,7 +501,8 @@ String checkbox(const char* name, bool checked, const char* label, const char* h
 String timeZoneSelect() {
   String s = "<label>Time zone:</label><select name='tz'>";
   bool found = false;
-  for (const TimeZoneChoice& z : TIME_ZONES) {
+  for (int i = 0; i < TIME_ZONE_COUNT; i++) {
+    const TimeZoneChoice& z = TIME_ZONES[i];
     bool sel = strcmp(cfgTz, z.tz) == 0;
     found = found || sel;
     s += "<option value='" + String(z.tz) + "'" + (sel ? " selected" : "") + ">" + z.label + "</option>";

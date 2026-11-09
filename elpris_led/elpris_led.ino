@@ -3,7 +3,7 @@
 // Requires: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 or ESP8266 Arduino core
 //
 // Features:
-//  - Configurable time zone (web + WiFiManager), stored in flash
+//  - Time zone chosen from a list in the web UI (Sweden by default), stored in flash
 //  - Configurable LED count (max MAX_LEDS), 15-minute prices are scaled to the strip
 //  - Configurable direction, so time can run left to right however the strip is mounted
 //  - The current 15 minutes pulses towards white and the time that has passed is dimmed to an
@@ -46,6 +46,15 @@
 const char* NTP_SERVER = "pool.ntp.org";
 const char* DEFAULT_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // Sweden
 const char* MDNS_NAME  = "elpris-led";                   // reachable as http://elpris-led.local
+
+// Time zones offered in the web UI. The value is a POSIX TZ rule, which includes daylight saving time.
+struct TimeZoneChoice { const char* label; const char* tz; };
+const TimeZoneChoice TIME_ZONES[] = {
+  {"Sweden, Norway, Denmark, Central Europe", "CET-1CEST,M3.5.0,M10.5.0/3"},
+  {"Finland, Estonia, Latvia, Lithuania",     "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+  {"United Kingdom, Ireland",                 "GMT0BST,M3.5.0/1,M10.5.0"},
+  {"UTC (no daylight saving time)",           "UTC0"},
+};
 
 const int SLOTS_PER_DAY   = 96;
 const int RING_SIZE       = PRICE_CACHE_SLOTS;   // per board, see platform.h
@@ -107,9 +116,8 @@ bool cfgAutoUpdate  = true;
 char cfgOtaPw[33]   = "";   // empty = OTA disabled
 char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
 
-// WiFiManager fields (values are filled in from flash in setup)
+// WiFiManager fields (values are filled in from flash in setup). The time zone is set in the web UI.
 WiFiManagerParameter pArea  ("area",   "Price area (SE1-SE4)",               "", 5);
-WiFiManagerParameter pTz    ("tz",     "Time zone (POSIX TZ string)",        "", 63);
 WiFiManagerParameter pNstart("nstart", "Night start hour (0-23)",            "", 3);
 WiFiManagerParameter pNend  ("nend",   "Night end hour (0-23)",              "", 3);
 WiFiManagerParameter pBday  ("bday",   "Day brightness (1-255)",             "", 4);
@@ -496,6 +504,24 @@ String checkbox(const char* name, bool checked, const char* label, const char* h
          label + "</label><br><small>" + help + "</small></p>";
 }
 
+// Drop-down with the time zones in TIME_ZONES, with the current one selected. A time zone that isn't in
+// the list (set by an older version) is kept as its own entry, so saving the page doesn't change it.
+String timeZoneSelect() {
+  String s = "<label>Time zone:</label><select name='tz'>";
+  bool found = false;
+  for (const TimeZoneChoice& z : TIME_ZONES) {
+    bool sel = strcmp(cfgTz, z.tz) == 0;
+    found = found || sel;
+    s += "<option value='" + String(z.tz) + "'" + (sel ? " selected" : "") + ">" + z.label + "</option>";
+  }
+  if (!found) {
+    String tz = htmlEscape(String(cfgTz));
+    s += "<option value='" + tz + "' selected>Custom (" + tz + ")</option>";
+  }
+  s += "</select>";
+  return s;
+}
+
 void handleRoot() {
   time_t now = time(nullptr);
   int32_t ns = (int32_t)(now / SLOT_SEC);
@@ -555,13 +581,8 @@ void handleRoot() {
   html += "<p><small>Time that has passed is shown at this share of the normal brightness, so the hours that are left stand out. "
           "100 = not dimmed, 0 = off. The eye sees brightness logarithmically, so 10 % looks clearly dimmed but not dark.</small></p>";
 
-  html += "<label>Time zone (presets):</label><select onchange=\"if(this.value)document.getElementById('tz').value=this.value\">";
-  html += "<option value=''>Choose...</option>";
-  html += "<option value='CET-1CEST,M3.5.0,M10.5.0/3'>Sweden / Central Europe</option>";
-  html += "<option value='EET-2EEST,M3.5.0/3,M10.5.0/4'>Finland / Baltics</option>";
-  html += "<option value='GMT0BST,M3.5.0/1,M10.5.0'>United Kingdom</option>";
-  html += "<option value='UTC0'>UTC</option></select>";
-  html += "<label>Time zone (POSIX TZ string):</label><input type='text' id='tz' name='tz' maxlength='63' value='" + htmlEscape(String(cfgTz)) + "'>";
+  html += timeZoneSelect();
+  html += "<p><small>Where the lamp is, so the strip starts at local midnight. Daylight saving time is handled automatically.</small></p>";
 
   html += "<label>Night mode start (hour 0-23):</label><input type='number' name='nstart' min='0' max='23' value='" + String(cfgNightStart) + "'>";
   html += "<label>Night mode end (hour 0-23):</label><input type='number' name='nend' min='0' max='23' value='" + String(cfgNightEnd) + "'>";
@@ -638,7 +659,6 @@ void handleUpdate() {
 // WiFiManager lives only inside this function, so its memory is freed once wifi is connected
 void connectWifi() {
   pArea.setValue(cfgArea, 5);
-  pTz.setValue(cfgTz, 63);
   pNstart.setValue(String(cfgNightStart).c_str(), 3);
   pNend.setValue(String(cfgNightEnd).c_str(), 3);
   pBday.setValue(String(cfgBrightDay).c_str(), 4);
@@ -647,7 +667,6 @@ void connectWifi() {
 
   WiFiManager wm;
   wm.addParameter(&pArea);
-  wm.addParameter(&pTz);
   wm.addParameter(&pNstart);
   wm.addParameter(&pNend);
   wm.addParameter(&pBday);
@@ -668,7 +687,6 @@ void connectWifi() {
   if (shouldSaveConfig) {
     int oldLeds = cfgNumLeds;
     strlcpy(cfgArea, pArea.getValue(), sizeof(cfgArea));
-    strlcpy(cfgTz, pTz.getValue(), sizeof(cfgTz));
     cfgNightStart  = String(pNstart.getValue()).toInt();
     cfgNightEnd    = String(pNend.getValue()).toInt();
     cfgBrightDay   = String(pBday.getValue()).toInt();

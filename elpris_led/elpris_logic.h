@@ -73,6 +73,13 @@ inline int physicalLed(int i, int numLeds, bool reverse) {
   return reverse ? numLeds - 1 - i : i;
 }
 
+// Brightness scale (0-255, as used by FastLED's nscale8) for a percentage 0-100, rounded and clamped
+inline uint8_t percentToScale(int pct) {
+  if (pct < 0) pct = 0;
+  if (pct > 100) pct = 100;
+  return (uint8_t)((pct * 255 + 50) / 100);
+}
+
 // Night mode, also when the interval crosses midnight. start == end means never night.
 inline bool isNightHour(int hour, int start, int end) {
   if (start > end) return hour >= start || hour < end;

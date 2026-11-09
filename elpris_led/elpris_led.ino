@@ -3,11 +3,11 @@
 // Requires: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 or ESP8266 Arduino core
 //
 // Features:
-//  - Configurable time zone (web + WiFiManager), stored in flash
+//  - Time zone chosen from a list in the web UI (Sweden by default), stored in flash
 //  - Configurable LED count (max MAX_LEDS), 15-minute prices are scaled to the strip
 //  - Configurable direction, so time can run left to right however the strip is mounted
-//  - The current 15 minutes pulses towards white and the time that has passed is dimmed,
-//    so "now" is easy to see (both can be turned off)
+//  - The current 15 minutes pulses towards white and the time that has passed is dimmed to an
+//    adjustable brightness, so "now" is easy to see
 //  - Few API calls: today's prices once a day, tomorrow's from 13:30 until they are available
 //  - Prices are read one at a time from the response, so it fits in ESP8266 memory
 //  - Exponential backoff + visual error indication, last error shown in the web UI
@@ -47,6 +47,15 @@ const char* NTP_SERVER = "pool.ntp.org";
 const char* DEFAULT_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // Sweden
 const char* MDNS_NAME  = "elpris-led";                   // reachable as http://elpris-led.local
 
+// Time zones offered in the web UI. The value is a POSIX TZ rule, which includes daylight saving time.
+struct TimeZoneChoice { const char* label; const char* tz; };
+const TimeZoneChoice TIME_ZONES[] = {
+  {"Sweden, Norway, Denmark, Central Europe", "CET-1CEST,M3.5.0,M10.5.0/3"},
+  {"Finland, Estonia, Latvia, Lithuania",     "EET-2EEST,M3.5.0/3,M10.5.0/4"},
+  {"United Kingdom, Ireland",                 "GMT0BST,M3.5.0/1,M10.5.0"},
+  {"UTC (no daylight saving time)",           "UTC0"},
+};
+
 const int SLOTS_PER_DAY   = 96;
 const int RING_SIZE       = PRICE_CACHE_SLOTS;   // per board, see platform.h
 
@@ -55,7 +64,7 @@ const int TOMORROW_ERROR_MIN = 16 * 60;       // missing tomorrow prices count a
 const int STATUS_LEDS        = 3;             // number of LEDs that blink magenta on fetch errors
 
 // How "now" is shown
-const uint8_t PAST_BRIGHTNESS  = 64;    // passed time at 25 % of full brightness (out of 255)
+const int     DEFAULT_PAST_PCT = 10;    // passed time at 10 % of normal brightness, unless set otherwise
 const uint8_t PULSE_BPM        = 30;    // one pulse every 2 seconds
 const uint8_t PULSE_WHITE_MAX  = 220;   // how far towards white the current LED goes (out of 255)
 
@@ -102,14 +111,13 @@ int  cfgBrightNight = 5;
 int  cfgNumLeds     = 100;
 bool cfgReverse     = false;  // true = time runs from the last LED to the first
 bool cfgPulseWhite  = true;   // true = the current LED pulses towards white, false = in its own color
-bool cfgDimPast     = true;   // true = time that has passed is shown dimmed
+int  cfgPastPct     = DEFAULT_PAST_PCT;  // brightness of passed time in percent: 100 = not dimmed, 0 = off
 bool cfgAutoUpdate  = true;
 char cfgOtaPw[33]   = "";   // empty = OTA disabled
 char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
 
-// WiFiManager fields (values are filled in from flash in setup)
+// WiFiManager fields (values are filled in from flash in setup). The time zone is set in the web UI.
 WiFiManagerParameter pArea  ("area",   "Price area (SE1-SE4)",               "", 5);
-WiFiManagerParameter pTz    ("tz",     "Time zone (POSIX TZ string)",        "", 63);
 WiFiManagerParameter pNstart("nstart", "Night start hour (0-23)",            "", 3);
 WiFiManagerParameter pNend  ("nend",   "Night end hour (0-23)",              "", 3);
 WiFiManagerParameter pBday  ("bday",   "Day brightness (1-255)",             "", 4);
@@ -150,6 +158,7 @@ void sanitizeSettings() {
   cfgBrightDay   = constrain(cfgBrightDay, 1, 255);
   cfgBrightNight = constrain(cfgBrightNight, 0, 255);
   cfgNumLeds     = constrain(cfgNumLeds, 1, MAX_LEDS);
+  cfgPastPct     = constrain(cfgPastPct, 0, 100);
 
   if (strlen(cfgTz) < 3) strlcpy(cfgTz, DEFAULT_TZ, sizeof(cfgTz));
   if (strlen(cfgApPw) > 0 && strlen(cfgApPw) < 8) cfgApPw[0] = '\0';   // WPA2 requires at least 8 characters
@@ -167,7 +176,9 @@ void loadSettings() {
   cfgNumLeds     = preferences.getInt("leds", 100);
   cfgReverse     = preferences.getBool("reverse", false);
   cfgPulseWhite  = preferences.getBool("pulsewh", true);
-  cfgDimPast     = preferences.getBool("dimpast", true);
+  // v3.0 had an on/off setting for dimming; a lamp that had it off keeps full brightness (100 %)
+  bool oldDimPast = preferences.getBool("dimpast", true);
+  cfgPastPct     = preferences.getInt("pastpct", oldDimPast ? DEFAULT_PAST_PCT : 100);
   cfgAutoUpdate  = preferences.getBool("autoupd", true);
   preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
   preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
@@ -184,7 +195,7 @@ void saveSettings() {
   preferences.putInt("leds", cfgNumLeds);
   preferences.putBool("reverse", cfgReverse);
   preferences.putBool("pulsewh", cfgPulseWhite);
-  preferences.putBool("dimpast", cfgDimPast);
+  preferences.putInt("pastpct", cfgPastPct);
   preferences.putBool("autoupd", cfgAutoUpdate);
   preferences.putString("otapw", cfgOtaPw);
   preferences.putString("appw", cfgApPw);
@@ -463,8 +474,8 @@ CRGB displayColor(const CRGB& priceColor, LedTime when) {
   if (when == LED_NOW) {
     if (cfgPulseWhite) c = blend(c, CRGB::White, beatsin8(PULSE_BPM, 0, PULSE_WHITE_MAX));   // price color <-> white
     else               c.nscale8(beatsin8(PULSE_BPM, 30, 255));                              // brighter <-> darker
-  } else if (when == LED_PAST && cfgDimPast) {
-    c.nscale8(PAST_BRIGHTNESS);
+  } else if (when == LED_PAST && cfgPastPct < 100) {
+    c.nscale8(percentToScale(cfgPastPct));
   }
   return c;
 }
@@ -491,6 +502,24 @@ String htmlEscape(const String& s) {
 String checkbox(const char* name, bool checked, const char* label, const char* help) {
   return String("<p><label><input type='checkbox' name='") + name + "' value='1'" + (checked ? " checked" : "") + ">" +
          label + "</label><br><small>" + help + "</small></p>";
+}
+
+// Drop-down with the time zones in TIME_ZONES, with the current one selected. A time zone that isn't in
+// the list (set by an older version) is kept as its own entry, so saving the page doesn't change it.
+String timeZoneSelect() {
+  String s = "<label>Time zone:</label><select name='tz'>";
+  bool found = false;
+  for (const TimeZoneChoice& z : TIME_ZONES) {
+    bool sel = strcmp(cfgTz, z.tz) == 0;
+    found = found || sel;
+    s += "<option value='" + String(z.tz) + "'" + (sel ? " selected" : "") + ">" + z.label + "</option>";
+  }
+  if (!found) {
+    String tz = htmlEscape(String(cfgTz));
+    s += "<option value='" + tz + "' selected>Custom (" + tz + ")</option>";
+  }
+  s += "</select>";
+  return s;
 }
 
 void handleRoot() {
@@ -547,16 +576,13 @@ void handleRoot() {
                    "Normally midnight is at the end where the strip's cable is connected. Tick this if time runs the wrong way, e.g. right to left.");
   html += checkbox("pulsewh", cfgPulseWhite, "Pulse the current 15 minutes towards white",
                    "Makes \"now\" stand out against any price color. Untick to pulse in the price color instead.");
-  html += checkbox("dimpast", cfgDimPast, "Dim the time that has passed",
-                   "Passed hours are shown at a quarter of the brightness, so the hours that are left stand out.");
 
-  html += "<label>Time zone (presets):</label><select onchange=\"if(this.value)document.getElementById('tz').value=this.value\">";
-  html += "<option value=''>Choose...</option>";
-  html += "<option value='CET-1CEST,M3.5.0,M10.5.0/3'>Sweden / Central Europe</option>";
-  html += "<option value='EET-2EEST,M3.5.0/3,M10.5.0/4'>Finland / Baltics</option>";
-  html += "<option value='GMT0BST,M3.5.0/1,M10.5.0'>United Kingdom</option>";
-  html += "<option value='UTC0'>UTC</option></select>";
-  html += "<label>Time zone (POSIX TZ string):</label><input type='text' id='tz' name='tz' maxlength='63' value='" + htmlEscape(String(cfgTz)) + "'>";
+  html += "<label>Brightness of passed time (0-100 %):</label><input type='number' name='pastpct' min='0' max='100' value='" + String(cfgPastPct) + "'>";
+  html += "<p><small>Time that has passed is shown at this share of the normal brightness, so the hours that are left stand out. "
+          "100 = not dimmed, 0 = off. The eye sees brightness logarithmically, so 10 % looks clearly dimmed but not dark.</small></p>";
+
+  html += timeZoneSelect();
+  html += "<p><small>Where the lamp is, so the strip starts at local midnight. Daylight saving time is handled automatically.</small></p>";
 
   html += "<label>Night mode start (hour 0-23):</label><input type='number' name='nstart' min='0' max='23' value='" + String(cfgNightStart) + "'>";
   html += "<label>Night mode end (hour 0-23):</label><input type='number' name='nend' min='0' max='23' value='" + String(cfgNightEnd) + "'>";
@@ -582,16 +608,16 @@ void handleSave() {
   int oldLeds = cfgNumLeds;
   bool otaPwChanged = false;
 
-  if (server.hasArg("area"))   server.arg("area").toCharArray(cfgArea, sizeof(cfgArea));
-  if (server.hasArg("tz"))     server.arg("tz").toCharArray(cfgTz, sizeof(cfgTz));
-  if (server.hasArg("nstart")) cfgNightStart  = server.arg("nstart").toInt();
-  if (server.hasArg("nend"))   cfgNightEnd    = server.arg("nend").toInt();
-  if (server.hasArg("bday"))   cfgBrightDay   = server.arg("bday").toInt();
-  if (server.hasArg("bnight")) cfgBrightNight = server.arg("bnight").toInt();
-  if (server.hasArg("leds"))   cfgNumLeds     = server.arg("leds").toInt();
+  if (server.hasArg("area"))    server.arg("area").toCharArray(cfgArea, sizeof(cfgArea));
+  if (server.hasArg("tz"))      server.arg("tz").toCharArray(cfgTz, sizeof(cfgTz));
+  if (server.hasArg("nstart"))  cfgNightStart  = server.arg("nstart").toInt();
+  if (server.hasArg("nend"))    cfgNightEnd    = server.arg("nend").toInt();
+  if (server.hasArg("bday"))    cfgBrightDay   = server.arg("bday").toInt();
+  if (server.hasArg("bnight"))  cfgBrightNight = server.arg("bnight").toInt();
+  if (server.hasArg("leds"))    cfgNumLeds     = server.arg("leds").toInt();
+  if (server.hasArg("pastpct")) cfgPastPct     = server.arg("pastpct").toInt();
   cfgReverse    = server.hasArg("reverse");   // unchecked boxes are not sent
   cfgPulseWhite = server.hasArg("pulsewh");
-  cfgDimPast    = server.hasArg("dimpast");
   cfgAutoUpdate = server.hasArg("autoupd");
 
   if (server.hasArg("otapw") && server.arg("otapw").length() > 0) {
@@ -633,7 +659,6 @@ void handleUpdate() {
 // WiFiManager lives only inside this function, so its memory is freed once wifi is connected
 void connectWifi() {
   pArea.setValue(cfgArea, 5);
-  pTz.setValue(cfgTz, 63);
   pNstart.setValue(String(cfgNightStart).c_str(), 3);
   pNend.setValue(String(cfgNightEnd).c_str(), 3);
   pBday.setValue(String(cfgBrightDay).c_str(), 4);
@@ -642,7 +667,6 @@ void connectWifi() {
 
   WiFiManager wm;
   wm.addParameter(&pArea);
-  wm.addParameter(&pTz);
   wm.addParameter(&pNstart);
   wm.addParameter(&pNend);
   wm.addParameter(&pBday);
@@ -663,7 +687,6 @@ void connectWifi() {
   if (shouldSaveConfig) {
     int oldLeds = cfgNumLeds;
     strlcpy(cfgArea, pArea.getValue(), sizeof(cfgArea));
-    strlcpy(cfgTz, pTz.getValue(), sizeof(cfgTz));
     cfgNightStart  = String(pNstart.getValue()).toInt();
     cfgNightEnd    = String(pNend.getValue()).toInt();
     cfgBrightDay   = String(pBday.getValue()).toInt();

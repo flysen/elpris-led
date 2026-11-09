@@ -151,6 +151,23 @@ static void testPhysicalLed() {
   }
 }
 
+static void testPercentToScale() {
+  check("percentToScale: 0 % is off", percentToScale(0), 0);
+  check("percentToScale: 10 % (default for passed time)", percentToScale(10), 26);
+  check("percentToScale: 25 % (v3.0 dimming)", percentToScale(25), 64);
+  check("percentToScale: 50 %", percentToScale(50), 128);
+  check("percentToScale: 100 % is full", percentToScale(100), 255);
+  check("percentToScale: below 0 is clamped to off", percentToScale(-5), 0);
+  check("percentToScale: above 100 is clamped to full", percentToScale(150), 255);
+
+  // Higher percentage never gives a lower scale
+  bool ok = true;
+  for (int p = 1; p <= 100; p++) {
+    if (percentToScale(p) < percentToScale(p - 1)) ok = false;
+  }
+  checkTrue("percentToScale: never decreases from 0 to 100 %", ok);
+}
+
 static void testIsNightHour() {
   checkTrue("isNightHour 23-6: 23 is night", isNightHour(23, 23, 6));
   checkTrue("isNightHour 23-6: 0 is night", isNightHour(0, 23, 6));
@@ -205,6 +222,7 @@ static void testVersions() {
   checkTrue("isNewerVersion: v2.10 > v2.9", isNewerVersion("v2.10", "v2.9"));
   checkTrue("isNewerVersion: v3.0 > v2.9.9", isNewerVersion("v3.0", "v2.9.9"));
   checkTrue("isNewerVersion: v3.0 > v2.5", isNewerVersion("v3.0", "v2.5"));
+  checkTrue("isNewerVersion: v3.1 > v3.0", isNewerVersion("v3.1", "v3.0"));
   checkTrue("isNewerVersion: v2.0.1 > v2.0", isNewerVersion("v2.0.1", "v2.0"));
   checkTrue("isNewerVersion: 2.1 without v > v2.0", isNewerVersion("2.1", "v2.0"));
   checkTrue("isNewerVersion: same version is not newer", !isNewerVersion("v2.0", "v2.0"));
@@ -230,6 +248,7 @@ int main() {
   testLedSlotRange();
   testLedTimeState();
   testPhysicalLed();
+  testPercentToScale();
   testIsNightHour();
   testBackoff();
   testValidArea();

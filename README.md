@@ -46,7 +46,7 @@ The lamp has two color modes, chosen under **Colors** in the web UI.
 
 ### Compared with a normal price (default)
 
-The question it answers: does it matter when I run the dishwasher, the washing machine or the car charger?
+The question it answers: does it matter when I run the dishwasher, the washing machine or the car charger? Designed by [@sealjo](https://github.com/sealjo); the full design is in [docs/normal-price-mode.md](docs/normal-price-mode.md).
 
 - The strip shows **today from midnight to midnight**, except the last three LEDs.
 - Each LED is compared with a **normal price**: the average of the last three days, today and tomorrow (once tomorrow's prices are published). The web page shows the normal price.
@@ -201,7 +201,7 @@ Dependabot opens pull requests when the GitHub Actions used here get new version
 
 ### Contributing
 
-New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, emulator, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout.
+New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, emulator, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout. Bigger changes to what the strip shows are best described in a design document under `docs/` first, like [docs/normal-price-mode.md](docs/normal-price-mode.md).
 
 ## Releases (for maintainers)
 
@@ -237,7 +237,7 @@ One-time repository setup before the first release:
 
 ## Credits
 
-- The **normal-price color mode** and the **emulator** were designed and built by [@sealjo](https://github.com/sealjo).
+- The **normal-price color mode** and the **emulator** were designed and built by [@sealjo](https://github.com/sealjo). The design is in [docs/normal-price-mode.md](docs/normal-price-mode.md), translated from his [original proposal](https://github.com/sealjo/elpris-led/blob/emulator/docs/emulator-forslag/FORSLAG.md).
 
 ## License
 

@@ -53,14 +53,20 @@ inline void priceSlots(time_t a, time_t b, int32_t& s0, int32_t& s1) {
   s1 = (int32_t)((b + SLOT_SEC - 1) / SLOT_SEC);
 }
 
-// Slot for local midnight dayOffset days from now (time zone from TZ).
-inline int32_t localMidnightSlot(time_t now, int dayOffset) {
+// Slot for local time hour:00 on the day dayOffset days from now (time zone from TZ). Hour 24 is the
+// next midnight. Counted from local time, so periods come out right on 23- and 25-hour days.
+inline int32_t localHourSlot(time_t now, int dayOffset, int hour) {
   struct tm t;
   localtime_r(&now, &t);
   t.tm_mday += dayOffset;
-  t.tm_hour = 0; t.tm_min = 0; t.tm_sec = 0;
+  t.tm_hour = hour; t.tm_min = 0; t.tm_sec = 0;
   t.tm_isdst = -1;
   return (int32_t)(mktime(&t) / SLOT_SEC);
+}
+
+// Slot for local midnight dayOffset days from now (time zone from TZ).
+inline int32_t localMidnightSlot(time_t now, int dayOffset) {
+  return localHourSlot(now, dayOffset, 0);
 }
 
 // Which slots in the window LED number i shows. The whole window is covered without gaps.
@@ -97,6 +103,74 @@ inline int initialPastPercent(bool hasSaved, int saved, bool oldDimOn, int defau
   if (hasSaved) return saved;
   return oldDimOn ? defaultPct : 100;
 }
+
+// =====================================================================
+//  Normal-price color mode (designed by @sealjo)
+//
+//  Today fills the strip from midnight to midnight, colored by how each price compares with a normal
+//  price (the average of the last few days, today and, optionally, tomorrow). Within a neutral zone
+//  the LED is yellow: it doesn't matter when you run the dishwasher. The last three LEDs are one off
+//  LED and two LEDs comparing tomorrow's 08-17 and 17-24 with the same hours today.
+// =====================================================================
+
+// Sum and count of 15-minute prices, for averages over one or more days. Prices are in SEK/kWh.
+struct PriceSum {
+  double sum = 0;
+  long count = 0;
+  void add(float price, long quarters = 1) { sum += (double)price * quarters; count += quarters; }
+  void add(const PriceSum& other) { sum += other.sum; count += other.count; }
+  bool empty() const { return count == 0; }
+  float mean() const { return count ? (float)(sum / count) : 0.0f; }
+};
+
+// Price level: negative is cheaper, positive more expensive. 0 = within the neutral zone.
+const int LEVEL_VERY_CHEAP     = -2;
+const int LEVEL_CHEAP          = -1;
+const int LEVEL_NEUTRAL        = 0;
+const int LEVEL_EXPENSIVE      = 1;
+const int LEVEL_VERY_EXPENSIVE = 2;
+
+// Level for a difference in öre: within +-neutralOre it doesn't matter, from +-strongOre it is "very"
+inline int levelForDiff(float diffOre, int neutralOre, int strongOre) {
+  if (diffOre >= strongOre)   return LEVEL_VERY_EXPENSIVE;
+  if (diffOre <= -strongOre)  return LEVEL_VERY_CHEAP;
+  if (diffOre >= neutralOre)  return LEVEL_EXPENSIVE;
+  if (diffOre <= -neutralOre) return LEVEL_CHEAP;
+  return LEVEL_NEUTRAL;
+}
+
+// Level for a price compared with the normal price, both in öre. A price of zero or less is always very cheap.
+inline int levelForPrice(float priceOre, float normalOre, int neutralOre, int strongOre) {
+  if (priceOre <= 0) return LEVEL_VERY_CHEAP;
+  return levelForDiff(priceOre - normalOre, neutralOre, strongOre);
+}
+
+// FastLED rainbow hue for a level. 5 levels: green, yellow-green, yellow, orange, red.
+// 3 levels: green, yellow, red, with "very" merged into cheap and expensive.
+inline uint8_t levelHue(int level, bool fiveLevels) {
+  if (level < LEVEL_VERY_CHEAP) level = LEVEL_VERY_CHEAP;
+  if (level > LEVEL_VERY_EXPENSIVE) level = LEVEL_VERY_EXPENSIVE;
+  if (!fiveLevels) return level < 0 ? 96 : level > 0 ? 0 : 64;
+  static const uint8_t hues[5] = {96, 80, 64, 32, 0};
+  return hues[level + 2];
+}
+
+// Tomorrow's periods shown on the last LEDs, in local hours [start, end)
+struct HourPeriod { int startHour; int endHour; const char* label; };
+const HourPeriod TOMORROW_PERIODS[] = {
+  {8,  17, "08-17"},
+  {17, 24, "17-24"},
+};
+const int TOMORROW_PERIOD_COUNT = sizeof(TOMORROW_PERIODS) / sizeof(TOMORROW_PERIODS[0]);
+const int TOMORROW_LEDS = 1 + TOMORROW_PERIOD_COUNT;   // one off LED, then one per period
+
+// Number of LEDs that show today's timeline. In normal-price mode the last TOMORROW_LEDS are used for
+// tomorrow, as long as the strip is long enough to keep at least one LED for today.
+inline int dayLedCount(int numLeds, bool normalMode) {
+  return (normalMode && numLeds > TOMORROW_LEDS) ? numLeds - TOMORROW_LEDS : numLeds;
+}
+
+// =====================================================================
 
 // Night mode, also when the interval crosses midnight. start == end means never night.
 inline bool isNightHour(int hour, int start, int end) {

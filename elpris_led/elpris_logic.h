@@ -123,6 +123,11 @@ struct PriceSum {
   float mean() const { return count ? (float)(sum / count) : 0.0f; }
 };
 
+// One past day in the normal price: only the sum of its prices is kept, not every quarter.
+// start is the day's local midnight slot, -1 for an empty entry. Defined here rather than in the sketch,
+// because the Arduino builder declares the sketch's functions before types defined in the sketch.
+struct HistoryDay { int32_t start = -1; PriceSum prices; };
+
 // Price level: negative is cheaper, positive more expensive. 0 = within the neutral zone.
 const int LEVEL_VERY_CHEAP     = -2;
 const int LEVEL_CHEAP          = -1;

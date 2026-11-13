@@ -111,7 +111,7 @@ PriceSum sumSlots(int32_t from, int32_t to) {
 
 // ---------- PRICE HISTORY (one sum per past day, for the normal price) ----------
 // Only a sum and a count per day are kept, not every quarter, so seven days fit in a few bytes.
-struct HistoryDay { int32_t start = -1; PriceSum prices; };   // start = local midnight slot, -1 = empty
+// HistoryDay is defined in elpris_logic.h.
 HistoryDay history[MAX_HISTORY_DAYS];
 
 HistoryDay* findHistory(int32_t start) {
@@ -369,15 +369,15 @@ void serviceFetch(const struct tm& t, time_t now) {
   int minutes = t.tm_hour * 60 + t.tm_min;
 
   // Today first, then the past days for the normal price, then tomorrow once it may be published
-  int dayOffset;
+  int dayOffset = 0;
+  int missingDay = missingHistoryDay(now);
   if (!dayCovered(todaySlot)) dayOffset = 0;
-  else if ((dayOffset = missingHistoryDay(now)) != 0) {}
+  else if (missingDay != 0) dayOffset = missingDay;
   else if (minutes >= TOMORROW_FETCH_MIN && !dayCovered(tomorrowSlot)) dayOffset = 1;
   else return;
 
   String memBefore = memoryInfo();
   int code = 0;
-  unsigned long ms;
 
   if (dayOffset < 0) {
     // A past day: only its sum is kept. If it can't be fetched it is stored as empty and left out of the
@@ -393,7 +393,7 @@ void serviceFetch(const struct tm& t, time_t now) {
   }
 
   bool ok = fetchDay(priceUrl(now, dayOffset), code, nullptr);
-  ms = millis();
+  unsigned long ms = millis();
 
   if (ok) {
     failStreak = 0;
@@ -776,7 +776,7 @@ void handleRoot() {
   html += "</select>";
   html += checkbox("normtmrw", cfgNormTomorrow, "Count tomorrow in the normal price",
                    "Today's colors may then change when tomorrow's prices arrive after lunch: an expensive tomorrow makes today greener.");
-  html += "<p><small>These four settings apply to <i>Compared with a normal price</i>. Prices are spot prices excl. VAT, in öre.</small></p>";
+  html += "<p><small>These settings apply to <i>Compared with a normal price</i>. Prices are spot prices excl. VAT, in öre.</small></p>";
 
   html += "<h4>Strip</h4>";
   html += checkbox("reverse", cfgReverse, "Reverse direction",
@@ -850,7 +850,6 @@ void handleSave() {
   if (strcmp(oldArea, cfgArea) != 0) {
     clearCache();
     clearHistory();
-    nextAttemptMs = 0;
     failStreak = 0;
     fetchFailing = false;
     lastFetchError = "";

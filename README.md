@@ -1,8 +1,8 @@
 # Elpris-LED
 
-An ESP32 or ESP8266 and a WS2812B LED strip that show the day's Swedish spot electricity prices as colors, from green (cheap) to red (expensive). Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se).
+An ESP32 or ESP8266 and a WS2812B LED strip that show the day's Swedish spot electricity prices as colors: green when it's a good time to use power, yellow when it doesn't matter, red when it's expensive. Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se).
 
-What's new in each version: see [CHANGELOG.md](CHANGELOG.md).
+What's new in each version: see [CHANGELOG.md](CHANGELOG.md). Try it without a lamp in the [emulator](https://flysen.github.io/elpris-led/emulator/).
 
 ## Getting started
 
@@ -42,12 +42,31 @@ With several lamps on the same network, only one of them answers to `elpris-led.
 
 ## Reading the strip
 
-- The strip runs from midnight today to midnight tonight, or to midnight tomorrow once tomorrow's prices are published (usually after lunch).
-- **Green** is the cheapest and **red** the most expensive time in the period shown.
-- The LED for **the current 15 minutes pulses towards white**.
-- **Time that has passed is dimmed** (to 10 % by default), so the hours that are left, the ones worth planning around, stand out.
+The lamp has two color modes, chosen under **Colors** in the web UI.
 
-In the web UI you can turn the white pulse off, and set **Brightness of passed time** anywhere from 0 % (passed time off) to 100 % (not dimmed).
+### Compared with a normal price (default)
+
+The question it answers: does it matter when I run the dishwasher, the washing machine or the car charger?
+
+- The strip shows **today from midnight to midnight**, except the last three LEDs.
+- Each LED is compared with a **normal price**: the average of the last three days, today and tomorrow (once tomorrow's prices are published). The web page shows the normal price.
+- **Yellow:** within ±20 öre of normal. It doesn't matter when you use power.
+- **Yellow-green / green:** 20 / 80 öre or more cheaper than normal. A price of zero or below is always green.
+- **Orange / red:** 20 / 80 öre or more expensive than normal.
+- **The last three LEDs:** one off LED, then **tomorrow 08–17** and **tomorrow 17–24**, each compared with the same hours today. Green means tomorrow is cheaper, red more expensive, yellow about the same. They are off until tomorrow's prices are published, usually after lunch.
+
+A day where prices only move between 30 and 40 öre is all yellow, because it really doesn't matter; a day with a big evening peak shows it in red.
+
+### Cheapest to most expensive
+
+The coloring from v3 and earlier: today, and tomorrow once published, from green (the cheapest time in the period shown) to red (the most expensive). Even a cheap day has red hours, which is good for finding the very cheapest time, for example for charging a car.
+
+### In both modes
+
+- The LED for **the current 15 minutes pulses towards white**.
+- **Time that has passed is dimmed** (to 10 % by default), so the hours that are left stand out.
+
+Try both modes, and all the settings, in the [emulator](https://flysen.github.io/elpris-led/emulator/).
 
 ## Settings in the web UI
 
@@ -55,6 +74,12 @@ In the web UI you can turn the white pulse off, and set **Brightness of passed t
 |---|---|
 | Price area | SE1–SE4, the bidding zone whose prices are shown |
 | Number of LEDs | How many LEDs the strip has (up to 300); changing it restarts the lamp |
+| Colors | *Compared with a normal price* (default) or *Cheapest to most expensive* |
+| Normal price: past days | 0–7 past days in the normal price, default 3 |
+| Doesn't matter within | The yellow zone around the normal price, default ±20 öre |
+| Very cheap or expensive from | Where green and red start, default ±80 öre |
+| Levels | 5 (green, yellow-green, yellow, orange, red) or 3 (green, yellow, red) |
+| Count tomorrow in the normal price | On by default. Today's colors may then change when tomorrow's prices arrive |
 | Reverse direction | Which end of the strip is midnight |
 | Pulse the current 15 minutes towards white | Off: the current LED pulses in its own price color instead |
 | Brightness of passed time | 0–100 % of normal brightness, default 10 % |
@@ -65,11 +90,12 @@ In the web UI you can turn the white pulse off, and set **Brightness of passed t
 | OTA password | Turns on updates from the Arduino IDE; empty means off |
 | Config portal password | Protects the *Elpris-LED-Config* wifi that opens when the lamp can't reach your network |
 
+All prices are spot prices excluding VAT, grid fees and energy tax.
+
 ## Features
 
-- Shows today from midnight to midnight along the strip, and tomorrow too once prices are published.
+- Two color modes: compared with a normal price, with a yellow "doesn't matter" zone and tomorrow compared with today, or cheapest to most expensive.
 - "Now" is easy to see: a white pulse on the current 15 minutes, and dimmed past hours with adjustable brightness.
-- The color scale is relative to the period shown, so even a cheap day has red hours.
 - The direction can be reversed, so time reads left to right however the strip is mounted.
 - Time zone chosen from a list with plain names; daylight saving time and 23- and 25-hour days are handled.
 - All settings in a web UI at `http://elpris-led.local` (see the table above).
@@ -77,6 +103,7 @@ In the web UI you can turn the white pulse off, and set **Brightness of passed t
 - Updates itself: new releases are found within six hours and installed automatically, for each board type.
 - Few API calls; cached prices are used if fetching fails, with automatic retries. The web UI shows the reason when fetching fails.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
+- An emulator for trying the color modes and settings in a browser.
 
 ## Status colors
 
@@ -86,8 +113,6 @@ In the web UI you can turn the white pulse off, and set **Brightness of passed t
 | Whole strip pulses purple | No prices for now and fetching fails |
 | First three LEDs (from midnight) blink magenta | Fetching fails, cached prices still shown |
 | Dim cyan dots | Installing an update, the lamp restarts when done |
-
-Prices are spot prices excluding VAT, grid fees and energy tax.
 
 ## Hardware
 
@@ -124,6 +149,12 @@ The board and the strip must share ground. Connect the strip at the end where th
 
 Builds you compile yourself, and CI builds, report version `dev` and never update automatically, so your own changes aren't overwritten. Flash a release to get back on automatic updates.
 
+## Emulator
+
+[flysen.github.io/elpris-led/emulator](https://flysen.github.io/elpris-led/emulator/) (source: `docs/emulator/index.html`) runs the lamp's color logic in the browser: both color modes, tomorrow's LEDs, dimming, the white pulse, reverse direction and night mode, on example days or on real prices you paste in. It is published together with the install page at every release.
+
+The emulator repeats the lamp's logic in JavaScript, so when what the strip shows changes, the emulator must be updated in the same pull request (it's on the checklist).
+
 ## Building from source
 
 Only needed if you want to change the code. One sketch, `elpris_led/`, builds for both boards; the few differences (includes, data pin, settings storage, mDNS, OTA and price cache size) are in `elpris_led/platform.h`. With [arduino-cli](https://arduino.github.io/arduino-cli/) installed:
@@ -132,7 +163,7 @@ Only needed if you want to change the code. One sketch, `elpris_led/`, builds fo
 bash scripts/arduino-deps.sh                # ESP32 and ESP8266 cores and libraries at the pinned versions
 bash scripts/build-firmware.sh dev esp32    # build and check one board into build-out/<board> and dist/
 bash scripts/build-firmware.sh dev esp8266
-bash scripts/package.sh dev                 # install page with manifest.json in site/, and dist/SHA256SUMS
+bash scripts/package.sh dev                 # install page and emulator with manifest.json in site/, and dist/SHA256SUMS
 ```
 
 To upload directly to a connected board:
@@ -149,7 +180,7 @@ In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32
 
 Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
 
-The logic that doesn't need the hardware is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer: time and daylight saving time, 15-minute slots, LED order and direction, past/now/future, dimming, the time zone list (offsets and DST change days for every zone), settings carried over from older versions, night mode and version comparison.
+The logic that doesn't need the hardware is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer: time and daylight saving time, 15-minute slots, local-hour periods, LED order and direction, past/now/future, dimming, the normal price and its color levels, tomorrow's LEDs, the time zone list (offsets and DST change days for every zone), settings carried over from older versions, night mode and version comparison.
 
 ```bash
 make test            # unit tests
@@ -170,11 +201,11 @@ Dependabot opens pull requests when the GitHub Actions used here get new version
 
 ### Contributing
 
-New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout.
+New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, emulator, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout.
 
 ## Releases (for maintainers)
 
-Pushing a version tag checks the tag, runs the tests, builds the firmware for both boards with that version number, publishes a release with `-full.bin` and `-ota.bin` per board plus `SHA256SUMS`, and updates the install page. Lamps in the field pick up the new version from the install page within six hours.
+Pushing a version tag checks the tag, runs the tests, builds the firmware for both boards with that version number, publishes a release with `-full.bin` and `-ota.bin` per board plus `SHA256SUMS`, and updates the install page and the emulator. Lamps in the field pick up the new version from the install page within six hours.
 
 ```bash
 git tag v2.1
@@ -203,6 +234,10 @@ One-time repository setup before the first release:
 1. *Settings → Pages*: set *Source* to *GitHub Actions*.
 2. *Settings → Environments → github-pages*: allow tags matching `v*` under deployment branches and tags. Otherwise the deploy is blocked because it runs from a tag.
 3. *Settings → Rules → Rulesets*: protect `main` and require the CI checks *tests*, *lint* and *firmware* to pass before merging.
+
+## Credits
+
+- The **normal-price color mode** and the **emulator** were designed and built by [@sealjo](https://github.com/sealjo).
 
 ## License
 

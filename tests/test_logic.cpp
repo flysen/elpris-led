@@ -423,6 +423,28 @@ static void testValidArea() {
   checkTrue("validArea: too long invalid", !validArea("SE33"));
 }
 
+static void testResponseSnippet() {
+  char out[64];
+  const char* html = "<!DOCTYPE html>\n<html lang=\"en\">";
+  responseSnippet(html, strlen(html), out, sizeof(out));
+  checkTrue("responseSnippet: a line break becomes one space", strcmp(out, "<!DOCTYPE html> <html lang=\"en\">") == 0);
+
+  const char* spaced = "  \r\n\t [ {\"a\": 1} ]  \n";
+  responseSnippet(spaced, strlen(spaced), out, sizeof(out));
+  checkTrue("responseSnippet: leading, trailing and repeated whitespace is dropped", strcmp(out, "[ {\"a\": 1} ]") == 0);
+
+  char small[6];
+  responseSnippet("abcdefghij", 10, small, sizeof(small));
+  checkTrue("responseSnippet: cut to fit the buffer", strcmp(small, "abcde") == 0);
+
+  responseSnippet("", 0, out, sizeof(out));
+  checkTrue("responseSnippet: an empty response gives an empty string", out[0] == '\0');
+
+  const char bin[] = {'O', 'K', 0x01, 0x7f, 'x'};
+  responseSnippet(bin, sizeof(bin), out, sizeof(out));
+  checkTrue("responseSnippet: control characters become a single space", strcmp(out, "OK x") == 0);
+}
+
 static void testParseVersion() {
   int v[3];
   bool pre = false;
@@ -449,6 +471,7 @@ static void testVersions() {
   checkTrue("isNewerVersion: v3.0 > v2.5", isNewerVersion("v3.0", "v2.5"));
   checkTrue("isNewerVersion: v3.1 > v3.0", isNewerVersion("v3.1", "v3.0"));
   checkTrue("isNewerVersion: v4.0 > v3.1", isNewerVersion("v4.0", "v3.1"));
+  checkTrue("isNewerVersion: v4.0.1 > v4.0", isNewerVersion("v4.0.1", "v4.0"));
   checkTrue("isNewerVersion: v2.0.1 > v2.0", isNewerVersion("v2.0.1", "v2.0"));
   checkTrue("isNewerVersion: 2.1 without v > v2.0", isNewerVersion("2.1", "v2.0"));
   checkTrue("isNewerVersion: same version is not newer", !isNewerVersion("v2.0", "v2.0"));
@@ -524,6 +547,7 @@ int main() {
   testIsNightHour();
   testBackoff();
   testValidArea();
+  testResponseSnippet();
   testParseVersion();
   testVersions();
   testParseRelease();

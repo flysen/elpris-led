@@ -198,6 +198,28 @@ inline bool validArea(const char* a) {
   return a[0] == 'S' && a[1] == 'E' && a[2] >= '1' && a[2] <= '4' && a[3] == '\0';
 }
 
+// The first bytes of an unexpected server response, made readable on one line for the web UI: control
+// characters become spaces, runs of spaces are collapsed, leading and trailing spaces are dropped, and the
+// result is cut to fit outSize (including the terminating zero).
+inline void responseSnippet(const char* in, size_t len, char* out, size_t outSize) {
+  if (outSize == 0) return;
+  size_t o = 0;
+  bool lastSpace = true;   // drops leading spaces
+  for (size_t i = 0; i < len && o + 1 < outSize; i++) {
+    unsigned char c = (unsigned char)in[i];
+    if (c < 32 || c == 127) c = ' ';
+    if (c == ' ') {
+      if (lastSpace) continue;
+      lastSpace = true;
+    } else {
+      lastSpace = false;
+    }
+    out[o++] = (char)c;
+  }
+  while (o > 0 && out[o - 1] == ' ') o--;
+  out[o] = '\0';
+}
+
 // =====================================================================
 //  Versions and update channels
 // =====================================================================

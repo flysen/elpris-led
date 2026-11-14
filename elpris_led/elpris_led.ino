@@ -15,7 +15,8 @@
 //  - Few API calls: today's prices once a day, a few past days for the normal price, tomorrow's
 //    from 13:30 until they are available
 //  - Prices are read one at a time from the response, so it fits in ESP8266 memory
-//  - Exponential backoff + visual error indication, last error shown in the web UI
+//  - Exponential backoff + visual error indication, last error shown in the web UI, including the start
+//    of the server's response when it isn't price data
 //  - Cached data is used as long as it covers the current time ("offline" only when it runs out)
 //  - Settings are validated, WiFiManager fields show stored values
 //  - No blocking calls in the web handler
@@ -51,6 +52,10 @@
 const char* NTP_SERVER = "pool.ntp.org";
 const char* DEFAULT_TZ = TIME_ZONES[0].tz;               // Sweden
 const char* MDNS_NAME  = "elpris-led";                   // reachable as http://elpris-led.local
+
+// Sent with every request, so the servers can see what is asking. Some sites block the libraries'
+// anonymous default user agents.
+const char* USER_AGENT = "Elpris-LED/" FW_VERSION " (+https://github.com/flysen/elpris-led)";
 
 const int SLOTS_PER_DAY   = 96;
 const int RING_SIZE       = PRICE_CACHE_SLOTS;   // per board, see platform.h
@@ -178,6 +183,7 @@ unsigned long nextAttemptMs = 0;
 int          failStreak    = 0;
 bool         fetchFailing  = false;
 String       lastFetchError = "";            // shown in the web UI while fetching fails
+String       lastResponseInfo = "";          // content type and start of a response that had no prices
 unsigned long restartAtMs   = 0;
 bool         otaActive     = false;
 bool         mdnsActive    = false;
@@ -309,15 +315,40 @@ String describeFetchError(int code) {
   return HTTPClient::errorToString(code);   // connection, TLS and timeout errors
 }
 
+// Reads from another stream and keeps a copy of the first bytes, so the start of a response that turned out
+// not to be price data can be shown in the web UI.
+class RecordingStream : public Stream {
+ public:
+  explicit RecordingStream(Stream& source) : src(source) {}
+  int available() { return src.available(); }
+  int read() {
+    int c = src.read();
+    if (c >= 0 && len < sizeof(buf)) buf[len++] = (char)c;
+    return c;
+  }
+  int peek() { return src.peek(); }
+  size_t write(uint8_t) { return 0; }
+  void flush() {}
+  char buf[80];
+  size_t len = 0;
+ private:
+  Stream& src;
+};
+
 // Fetches one day of prices. With sumOnly, the prices are added to that sum (for past days in the
 // normal price) instead of being stored per quarter in the cache.
 bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
+  lastResponseInfo = "";
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   setHttpTimeouts(http);
   http.useHTTP10(true);
   if (!http.begin(client, url)) { code = FETCH_ERR_BEGIN; return false; }
+  http.setUserAgent(USER_AGENT);
+  http.addHeader("Accept", "application/json");
+  const char* headerKeys[] = {"Content-Type"};
+  http.collectHeaders(headerKeys, 1);
 
   code = http.GET();
   if (code != HTTP_CODE_OK) { http.end(); return false; }
@@ -329,7 +360,8 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   filter["time_start"]  = true;
   filter["time_end"]    = true;
 
-  Stream& stream = http.getStream();
+  RecordingStream stream(http.getStream());
+  stream.setTimeout(10000);
   int stored = 0;
   bool parseError = !stream.find("[");
   if (!parseError) {
@@ -353,10 +385,18 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
       }
     } while (stream.findUntil(",", "]"));
   }
-  http.end();
 
-  if (stored == 0) { code = parseError ? FETCH_ERR_PARSE : FETCH_ERR_EMPTY; return false; }
-  return true;
+  if (stored == 0) {
+    // Not price data: keep what the server sent, for the error shown in the web UI
+    char snippet[61];
+    responseSnippet(stream.buf, stream.len, snippet, sizeof(snippet));
+    String type = http.header("Content-Type");
+    lastResponseInfo = "content type " + (type.length() ? type : String("missing")) +
+                       ", response starts with \"" + String(snippet) + "\"";
+    code = parseError ? FETCH_ERR_PARSE : FETCH_ERR_EMPTY;
+  }
+  http.end();
+  return stored > 0;
 }
 
 // The most recent past day missing from the history that the normal price needs, as a day offset
@@ -396,7 +436,8 @@ void serviceFetch(const struct tm& t, time_t now) {
     needRebuild = true;
     nextAttemptMs = millis() + 1000UL;
     if (ok) Serial.printf("Prices fetched for the normal price (day %d)\n", dayOffset);
-    else    Serial.printf("Could not fetch day %d for the normal price: %s\n", dayOffset, describeFetchError(code).c_str());
+    else    Serial.printf("Could not fetch day %d for the normal price: %s %s\n", dayOffset,
+                          describeFetchError(code).c_str(), lastResponseInfo.c_str());
     return;
   }
 
@@ -422,6 +463,7 @@ void serviceFetch(const struct tm& t, time_t now) {
     nextAttemptMs = ms + d;
     fetchFailing = (dayOffset == 0) || (minutes >= TOMORROW_ERROR_MIN);
     lastFetchError = describeFetchError(code) + " (code " + String(code) + ", " + memBefore + ")";
+    if (lastResponseInfo.length()) lastFetchError += ", " + lastResponseInfo;
     Serial.printf("Fetch failed: %s, retrying in %lu s\n", lastFetchError.c_str(), d / 1000);
   }
 }
@@ -437,6 +479,7 @@ bool fetchLatestVersion(String& out) {
   setHttpTimeouts(http);
   http.useHTTP10(true);
   if (!http.begin(client, String(UPDATE_BASE_URL) + "manifest.json")) return false;
+  http.setUserAgent(USER_AGENT);
 
   int code = http.GET();
   if (code != HTTP_CODE_OK) { http.end(); return false; }
@@ -463,7 +506,7 @@ bool fetchNewestRelease(String& out) {
   setHttpTimeouts(http);
   http.useHTTP10(true);
   if (!http.begin(client, RELEASES_API)) return false;
-  http.setUserAgent("Elpris-LED");                         // GitHub's API requires a user agent
+  http.setUserAgent(USER_AGENT);                           // GitHub's API requires a user agent
   http.addHeader("Accept", "application/vnd.github+json");
 
   int code = http.GET();
@@ -794,13 +837,13 @@ void handleRoot() {
   else if (restartingForUpdate) refresh = "<meta http-equiv='refresh' content='30;url=/'>";
 
   String html;
-  html.reserve(11500);
+  html.reserve(11800);
   html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>" + refresh;
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
   html += "input[type=checkbox]{width:auto;margin-right:8px;}";
   html += "button{width:100%;padding:12px;background:#4CAF50;color:white;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;}";
-  html += ".card{background:#1e1e1e;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;}small{color:#999;}h4{margin:18px 0 4px;}</style></head><body>";
+  html += ".card{background:#1e1e1e;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;}small{color:#999;word-break:break-word;}h4{margin:18px 0 4px;}</style></head><body>";
 
   html += "<h2>Elpris LED</h2><div class='card'><h3>Live Status</h3>";
   html += "<p><strong>Current price:</strong> " + priceTxt + "<br><small>Spot price excl. VAT, grid fees and tax</small></p>";

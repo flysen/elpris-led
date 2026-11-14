@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 const int SLOT_SEC = 900;   // 15 minutes
@@ -105,7 +106,7 @@ inline int initialPastPercent(bool hasSaved, int saved, bool oldDimOn, int defau
 }
 
 // =====================================================================
-//  Normal-price color mode (designed by @sealjo)
+//  Normal-price color mode (designed by @sealjo, see docs/normal-price-mode.md)
 //
 //  Today fills the strip from midnight to midnight, colored by how each price compares with a normal
 //  price (the average of the last few days, today and, optionally, tomorrow). Within a neutral zone
@@ -197,6 +198,10 @@ inline bool validArea(const char* a) {
   return a[0] == 'S' && a[1] == 'E' && a[2] >= '1' && a[2] <= '4' && a[3] == '\0';
 }
 
+// =====================================================================
+//  Versions and update channels
+// =====================================================================
+
 // Parses a version like "v2.1" or "2.1.3" into major, minor, patch. Missing parts are 0.
 // A suffix such as "-rc1" is only accepted when pre is given, and then sets *pre.
 // Returns false for anything else (e.g. "dev", "v2.", "v2.1.3.4").
@@ -222,7 +227,7 @@ inline bool parseVersion(const char* s, int v[3], bool* pre = nullptr) {
   return false;
 }
 
-// True if candidate is a stable release that should replace current.
+// Stable channel: true if candidate is a stable release that should replace current.
 // - Release candidates ("v2.1-rc1") are never installed automatically.
 // - A lamp running a release candidate gets the stable release with the same number.
 // - A current version that can't be parsed (a local "dev" build) is never replaced.
@@ -234,4 +239,46 @@ inline bool isNewerVersion(const char* candidate, const char* current) {
     if (a[i] != b[i]) return a[i] > b[i];
   }
   return currentPre;
+}
+
+// Parses a release tag: a stable version (rc = 0) or a release candidate "-rcN" with N from 1 (rc = N).
+// Returns false for anything else, including other suffixes such as "-beta".
+inline bool parseRelease(const char* s, int v[3], int& rc) {
+  bool pre = false;
+  rc = 0;
+  if (!parseVersion(s, v, &pre)) return false;
+  if (!pre) return true;
+  const char* d = strchr(s, '-');
+  if (!d || strncmp(d, "-rc", 3) != 0) return false;
+  d += 3;
+  if (*d < '1' || *d > '9') return false;
+  int n = 0;
+  while (*d >= '0' && *d <= '9') {
+    if (n > 9999) return false;
+    n = n * 10 + (*d - '0');
+    d++;
+  }
+  if (*d != '\0') return false;
+  rc = n;
+  return true;
+}
+
+// Orders two releases: -1, 0 or 1. A stable release is newer than its own release candidates,
+// and rc2 is newer than rc1. Version numbers count first: v4.1-rc1 is newer than v4.0.
+inline int compareReleases(const int a[3], int aRc, const int b[3], int bRc) {
+  for (int i = 0; i < 3; i++) {
+    if (a[i] != b[i]) return a[i] > b[i] ? 1 : -1;
+  }
+  if (aRc == bRc) return 0;
+  if (aRc == 0) return 1;
+  if (bRc == 0) return -1;
+  return aRc > bRc ? 1 : -1;
+}
+
+// Test channel: true if candidate, a stable release or a release candidate, should replace current.
+// A current version that can't be parsed (a local "dev" build) is never replaced.
+inline bool isNewerTestVersion(const char* candidate, const char* current) {
+  int a[3], b[3], aRc, bRc;
+  if (!parseRelease(candidate, a, aRc) || !parseRelease(current, b, bRc)) return false;
+  return compareReleases(a, aRc, b, bRc) > 0;
 }

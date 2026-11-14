@@ -21,7 +21,7 @@
 //  - No blocking calls in the web handler
 //  - OTA and portal passwords are set in the web UI and stored in flash (no passwords in the code)
 //  - Automatic updates: new GitHub releases are found every 6 hours and installed right after a
-//    restart, when the most memory is free
+//    restart, when the most memory is free. A test channel also installs release candidates.
 //  - Network name elpris-led-xxxxxx in the router and http://elpris-led.local via mDNS
 //  - Pure logic lives in elpris_logic.h and is tested with "make test" (see tests/)
 
@@ -77,11 +77,16 @@ const int FETCH_ERR_PARSE = -101;   // the response could not be read as price d
 const int FETCH_ERR_EMPTY = -102;   // the response had no prices
 
 // ---------- UPDATES ----------
-// The install page (GitHub Pages) publishes manifest.json with the latest version and one app binary per board.
+// Stable channel: the install page (GitHub Pages) publishes manifest.json with the latest stable version
+// and one app binary per board. Release candidates never reach the install page.
+// Test channel: the lamp asks GitHub for the newest release, release candidates included, and downloads
+// the OTA file for its board straight from that release.
 // When a newer version is found, the lamp restarts and installs it first thing after connecting to wifi,
 // before anything else has used memory. That matters on ESP8266, where https needs most of the free memory.
-const char* UPDATE_BASE_URL = "https://flysen.github.io/elpris-led/";
-const char* UPDATE_FIRMWARE = "firmware/" BOARD_NAME "/elpris-led.bin";
+const char* UPDATE_BASE_URL  = "https://flysen.github.io/elpris-led/";
+const char* UPDATE_FIRMWARE  = "firmware/" BOARD_NAME "/elpris-led.bin";
+const char* RELEASES_API     = "https://api.github.com/repos/flysen/elpris-led/releases?per_page=5";
+const char* RELEASE_DOWNLOAD = "https://github.com/flysen/elpris-led/releases/download/";
 const unsigned long UPDATE_FIRST_CHECK_MS = 2UL * 60UL * 1000UL;          // first check 2 min after boot
 const unsigned long UPDATE_INTERVAL_MS    = 6UL * 60UL * 60UL * 1000UL;   // then every 6 hours
 const unsigned long UPDATE_RETRY_MS       = 60UL * 60UL * 1000UL;         // retry after 1 h if the check fails
@@ -150,6 +155,7 @@ int  cfgStrongOre   = 80;     // from +- this many öre it is very cheap or very
 bool cfgFiveLevels  = true;   // 5 levels (green, yellow-green, yellow, orange, red) or 3 (green, yellow, red)
 bool cfgNormTomorrow = true;  // count tomorrow in the normal price once its prices are known
 bool cfgAutoUpdate  = true;
+bool cfgTestChannel = false;  // also install release candidates (test versions)
 char cfgOtaPw[33]   = "";   // empty = OTA disabled
 char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
 
@@ -184,7 +190,7 @@ int          normalDays    = 0;              // past days that were available fo
 float        tomorrowDiffOre[TOMORROW_PERIOD_COUNT];
 bool         tomorrowDiffValid[TOMORROW_PERIOD_COUNT];
 
-String        latestVersion      = "";     // latest release seen on the install page
+String        latestVersion      = "";     // latest release seen on the install page or on GitHub
 String        updateMessage      = "";     // result of the last update attempt, shown in the web UI
 unsigned long nextUpdateCheckMs  = UPDATE_FIRST_CHECK_MS;
 bool          updateRequested    = false;  // "Check for updates now" was pressed
@@ -236,6 +242,7 @@ void loadSettings() {
   cfgFiveLevels  = preferences.getBool("levels5", true);
   cfgNormTomorrow = preferences.getBool("normtmrw", true);
   cfgAutoUpdate  = preferences.getBool("autoupd", true);
+  cfgTestChannel = preferences.getBool("testchan", false);
   preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
   preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
   sanitizeSettings();
@@ -259,6 +266,7 @@ void saveSettings() {
   preferences.putBool("levels5", cfgFiveLevels);
   preferences.putBool("normtmrw", cfgNormTomorrow);
   preferences.putBool("autoupd", cfgAutoUpdate);
+  preferences.putBool("testchan", cfgTestChannel);
   preferences.putString("otapw", cfgOtaPw);
   preferences.putString("appw", cfgApPw);
 }
@@ -421,6 +429,7 @@ void serviceFetch(const struct tm& t, time_t now) {
 // =====================================================================
 //  Automatic updates from GitHub releases
 // =====================================================================
+// Stable channel: the version on the install page
 bool fetchLatestVersion(String& out) {
   WiFiClientSecure client;
   client.setInsecure();
@@ -445,6 +454,58 @@ bool fetchLatestVersion(String& out) {
   return true;
 }
 
+// Test channel: the newest release on GitHub, release candidates included. The releases are read one at a
+// time from the response and only their tag and draft flag are kept, so it fits in ESP8266 memory.
+bool fetchNewestRelease(String& out) {
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  setHttpTimeouts(http);
+  http.useHTTP10(true);
+  if (!http.begin(client, RELEASES_API)) return false;
+  http.setUserAgent("Elpris-LED");                         // GitHub's API requires a user agent
+  http.addHeader("Accept", "application/vnd.github+json");
+
+  int code = http.GET();
+  if (code != HTTP_CODE_OK) { http.end(); return false; }
+
+  JsonDocument filter;
+  filter["tag_name"] = true;
+  filter["draft"]    = true;
+
+  Stream& stream = http.getStream();
+  String best;
+  int bestV[3] = {0, 0, 0}, bestRc = 0;
+  if (stream.find("[")) {
+    do {
+      JsonDocument item;
+      if (deserializeJson(item, stream, DeserializationOption::Filter(filter))) break;
+      if (item["draft"] | false) continue;
+      const char* tag = item["tag_name"];
+      int v[3], rc;
+      if (!tag || !parseRelease(tag, v, rc)) continue;
+      if (best.length() == 0 || compareReleases(v, rc, bestV, bestRc) > 0) {
+        best = tag;
+        memcpy(bestV, v, sizeof(bestV));
+        bestRc = rc;
+      }
+    } while (stream.findUntil(",", "]"));
+  }
+  http.end();
+
+  if (best.length() == 0) return false;
+  out = best;
+  return true;
+}
+
+// Where the firmware for a version is downloaded from, for the lamp's update channel
+String firmwareUrl(const String& version) {
+  if (cfgTestChannel) {
+    return String(RELEASE_DOWNLOAD) + version + "/elpris-led-" + version + "-" + BOARD_NAME + "-ota.bin";
+  }
+  return String(UPDATE_BASE_URL) + UPDATE_FIRMWARE;
+}
+
 void showUpdatingOnStrip() {
   fill_solid(leds, cfgNumLeds, CRGB::Black);
   for (int i = 0; i < cfgNumLeds; i += 4) leds[i] = CRGB(0, 40, 40);   // dim cyan dots while updating
@@ -454,14 +515,16 @@ void showUpdatingOnStrip() {
 // Downloads and installs the firmware. Reboots on success; returns only if it failed.
 void installUpdate() {
   String memBefore = memoryInfo();
-  Serial.printf("Installing update %s (running %s on %s, %s)\n",
-                latestVersion.c_str(), FW_VERSION, BOARD_NAME, memBefore.c_str());
+  String url = firmwareUrl(latestVersion);
+  Serial.printf("Installing update %s from %s (running %s on %s, %s)\n",
+                latestVersion.c_str(), url.c_str(), FW_VERSION, BOARD_NAME, memBefore.c_str());
   showUpdatingOnStrip();
 
   WiFiClientSecure client;
   client.setInsecure();
   httpUpdate.rebootOnUpdate(true);
-  t_httpUpdate_return r = httpUpdate.update(client, String(UPDATE_BASE_URL) + UPDATE_FIRMWARE);
+  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);   // GitHub release files redirect to a download host
+  t_httpUpdate_return r = httpUpdate.update(client, url);
 
   if (r == HTTP_UPDATE_FAILED) {
     updateMessage = "Update to " + latestVersion + " failed: " + httpUpdate.getLastErrorString() + " (" + memBefore + ")";
@@ -502,7 +565,8 @@ void serviceUpdate() {
   updateRequested = false;
 
   String v;
-  if (!fetchLatestVersion(v)) {
+  bool ok = cfgTestChannel ? fetchNewestRelease(v) : fetchLatestVersion(v);
+  if (!ok) {
     nextUpdateCheckMs = millis() + UPDATE_RETRY_MS;
     if (manual) updateMessage = "Could not check for updates (" + memoryInfo() + ")";
     Serial.println("Update check failed");
@@ -511,7 +575,8 @@ void serviceUpdate() {
   nextUpdateCheckMs = millis() + UPDATE_INTERVAL_MS;
   latestVersion = v;
 
-  if (isNewerVersion(v.c_str(), FW_VERSION)) {
+  bool newer = cfgTestChannel ? isNewerTestVersion(v.c_str(), FW_VERSION) : isNewerVersion(v.c_str(), FW_VERSION);
+  if (newer) {
     if (cfgAutoUpdate || manual) restartToInstall(v);
     else updateMessage = v + " is available";
   } else if (manual) {
@@ -718,7 +783,8 @@ void handleRoot() {
   if (fetchFailing && lastFetchError.length()) status += "<br><small>Last error: " + htmlEscape(lastFetchError) + "</small>";
   String otaTxt = otaActive ? "Active" : "Off (set an OTA password below)";
   String fwTxt = String(FW_VERSION) + " (" + BOARD_NAME + ")";
-  if (latestVersion.length()) fwTxt += ", latest release: " + htmlEscape(latestVersion);
+  if (latestVersion.length()) fwTxt += ", latest " + String(cfgTestChannel ? "version incl. test versions" : "release") + ": " + htmlEscape(latestVersion);
+  if (cfgTestChannel) fwTxt += "<br><small>Test channel: release candidates are installed too.</small>";
   String ip = WiFi.localIP().toString();
   String addrTxt = mdnsActive ? String("http://") + MDNS_NAME + ".local or http://" + ip : String("http://") + ip;
 
@@ -728,7 +794,7 @@ void handleRoot() {
   else if (restartingForUpdate) refresh = "<meta http-equiv='refresh' content='30;url=/'>";
 
   String html;
-  html.reserve(11000);
+  html.reserve(11500);
   html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>" + refresh;
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
@@ -798,6 +864,9 @@ void handleRoot() {
 
   html += "<h4>Device</h4>";
   html += "<p><label><input type='checkbox' name='autoupd' value='1'" + String(cfgAutoUpdate ? " checked" : "") + ">Install new releases automatically</label></p>";
+  html += checkbox("testchan", cfgTestChannel, "Also install test versions (release candidates)",
+                   "For trying new features before they are released, wirelessly. Test versions may have bugs. "
+                   "Untick to go back: the lamp then moves on with the next stable release.");
 
   html += "<label>OTA password (empty = unchanged, changing it restarts the device):</label>";
   html += "<input type='password' name='otapw' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgOtaPw) ? "(set)" : "(not set)") + "'>";
@@ -815,6 +884,7 @@ void handleSave() {
   strlcpy(oldArea, cfgArea, sizeof(oldArea));
   strlcpy(oldTz, cfgTz, sizeof(oldTz));
   int oldLeds = cfgNumLeds;
+  bool oldTestChannel = cfgTestChannel;
   bool otaPwChanged = false;
 
   if (server.hasArg("area"))      server.arg("area").toCharArray(cfgArea, sizeof(cfgArea));
@@ -834,6 +904,7 @@ void handleSave() {
   cfgPulseWhite   = server.hasArg("pulsewh");
   cfgNormTomorrow = server.hasArg("normtmrw");
   cfgAutoUpdate   = server.hasArg("autoupd");
+  cfgTestChannel  = server.hasArg("testchan");
 
   if (server.hasArg("otapw") && server.arg("otapw").length() > 0) {
     String pw = server.arg("otapw");
@@ -853,6 +924,11 @@ void handleSave() {
     failStreak = 0;
     fetchFailing = false;
     lastFetchError = "";
+  }
+  if (cfgTestChannel != oldTestChannel) {   // the latest version depends on the channel
+    latestVersion = "";
+    updateMessage = "";
+    nextUpdateCheckMs = millis();
   }
   nextAttemptMs = 0;      // fetch any past days a changed normal-price setting needs
   needRebuild = true;     // colors depend on most settings, so always recalculate

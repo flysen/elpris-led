@@ -463,6 +463,45 @@ static void testVersions() {
   checkTrue("isNewerVersion: v2.0 does not replace v2.1-rc1", !isNewerVersion("v2.0", "v2.1-rc1"));
 }
 
+// ---------- Update test channel ----------
+
+static void testParseRelease() {
+  int v[3], rc;
+  checkTrue("parseRelease: v4.0 is a stable release", parseRelease("v4.0", v, rc) && rc == 0);
+  checkTrue("parseRelease: v4.0-rc1 is release candidate 1 of 4.0",
+            parseRelease("v4.0-rc1", v, rc) && rc == 1 && v[0] == 4 && v[1] == 0);
+  checkTrue("parseRelease: v4.0-rc12 is release candidate 12", parseRelease("v4.0-rc12", v, rc) && rc == 12);
+  checkTrue("parseRelease: -beta is not a release", !parseRelease("v4.0-beta", v, rc));
+  checkTrue("parseRelease: -rc without a number is not a release", !parseRelease("v4.0-rc", v, rc));
+  checkTrue("parseRelease: -rc0 is not a release", !parseRelease("v4.0-rc0", v, rc));
+  checkTrue("parseRelease: text after -rc1 is not a release", !parseRelease("v4.0-rc1x", v, rc));
+  checkTrue("parseRelease: dev is not a release", !parseRelease("dev", v, rc));
+}
+
+static void testTestChannel() {
+  checkTrue("test channel: v4.0-rc1 replaces v3.2", isNewerTestVersion("v4.0-rc1", "v3.2"));
+  checkTrue("test channel: v4.0-rc2 replaces v4.0-rc1", isNewerTestVersion("v4.0-rc2", "v4.0-rc1"));
+  checkTrue("test channel: v4.0-rc10 replaces v4.0-rc9", isNewerTestVersion("v4.0-rc10", "v4.0-rc9"));
+  checkTrue("test channel: v4.0 replaces v4.0-rc2", isNewerTestVersion("v4.0", "v4.0-rc2"));
+  checkTrue("test channel: v4.1-rc1 replaces v4.0", isNewerTestVersion("v4.1-rc1", "v4.0"));
+  checkTrue("test channel: v4.0-rc1 does not replace v4.0", !isNewerTestVersion("v4.0-rc1", "v4.0"));
+  checkTrue("test channel: v4.0-rc1 does not replace v4.0-rc2", !isNewerTestVersion("v4.0-rc1", "v4.0-rc2"));
+  checkTrue("test channel: the same version is not newer", !isNewerTestVersion("v4.0-rc1", "v4.0-rc1"));
+  checkTrue("test channel: v3.1 does not replace v3.2", !isNewerTestVersion("v3.1", "v3.2"));
+  checkTrue("test channel: a dev build is never replaced", !isNewerTestVersion("v9.0", "dev"));
+  checkTrue("test channel: other suffixes are never installed", !isNewerTestVersion("v9.0-beta", "v4.0"));
+  checkTrue("test channel: garbage is never newer", !isNewerTestVersion("latest", "v4.0"));
+
+  int a[3] = {4, 0, 0}, b[3] = {4, 0, 0}, c[3] = {4, 1, 0};
+  check("compareReleases: equal releases", compareReleases(a, 0, b, 0), 0);
+  check("compareReleases: a stable release is newer than its rc", compareReleases(a, 0, b, 3), 1);
+  check("compareReleases: an rc is older than its stable release", compareReleases(a, 3, b, 0), -1);
+  check("compareReleases: the version number counts before rc", compareReleases(c, 1, a, 0), 1);
+
+  // The stable channel still never installs release candidates
+  checkTrue("stable channel: v4.0-rc1 is not installed from v3.2", !isNewerVersion("v4.0-rc1", "v3.2"));
+}
+
 int main() {
   useTimeZone(SWEDEN_TZ);   // same as the lamp's default
 
@@ -487,6 +526,8 @@ int main() {
   testValidArea();
   testParseVersion();
   testVersions();
+  testParseRelease();
+  testTestChannel();
 
   printf("\n%d OK, %d FAIL\n", passed, failed);
   return failed ? 1 : 0;

@@ -10,7 +10,11 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 - New settings for the normal price: how many past days count (0–7), the yellow zone, where "very" starts, 5 or 3 color levels, and whether tomorrow counts.
 - The web page shows the normal price and how tomorrow compares with today.
 - **Emulator** at [flysen.github.io/elpris-led/emulator](https://flysen.github.io/elpris-led/emulator/): try both color modes and all display settings in the browser, without a lamp. By [@sealjo](https://github.com/sealjo).
-- Tests for every time zone in the list and for keeping the dimming setting from v3.0.
+- **Test channel for updates:** tick *Also install test versions* in the web UI, and the lamp installs release candidates too, wirelessly with *Check for updates now*. For testing new features before everyone else; off by default.
+
+## v3.2
+
+- Tests for every time zone in the list and for keeping the dimming setting from v3.0. No change in how the lamp behaves.
 - A pull request checklist and this changelog, so documentation is updated together with the code.
 
 ## v3.1

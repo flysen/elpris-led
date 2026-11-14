@@ -1,14 +1,19 @@
-// Elpris-LED v3
+// Elpris-LED v4
 // Runs on ESP32 and ESP8266. Board differences are in platform.h.
 // Requires: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 or ESP8266 Arduino core
 //
 // Features:
+//  - Two color modes:
+//    * Compared with a normal price (default, designed by @sealjo): today's prices against the average
+//      of the last days, with a neutral yellow zone, plus two LEDs comparing tomorrow with today
+//    * Cheapest to most expensive in the period shown (v3 and earlier)
 //  - Time zone chosen from a list in the web UI (Sweden by default), stored in flash
 //  - Configurable LED count (max MAX_LEDS), 15-minute prices are scaled to the strip
 //  - Configurable direction, so time can run left to right however the strip is mounted
 //  - The current 15 minutes pulses towards white and the time that has passed is dimmed to an
 //    adjustable brightness, so "now" is easy to see
-//  - Few API calls: today's prices once a day, tomorrow's from 13:30 until they are available
+//  - Few API calls: today's prices once a day, a few past days for the normal price, tomorrow's
+//    from 13:30 until they are available
 //  - Prices are read one at a time from the response, so it fits in ESP8266 memory
 //  - Exponential backoff + visual error indication, last error shown in the web UI
 //  - Cached data is used as long as it covers the current time ("offline" only when it runs out)
@@ -42,7 +47,7 @@
 #define COLOR_ORDER  GRB
 
 // ---------- CONSTANTS ----------
-// SLOT_SEC, the backoff times and the TIME_ZONES list are in elpris_logic.h
+// SLOT_SEC, the backoff times, the TIME_ZONES list and the normal-price logic are in elpris_logic.h
 const char* NTP_SERVER = "pool.ntp.org";
 const char* DEFAULT_TZ = TIME_ZONES[0].tz;               // Sweden
 const char* MDNS_NAME  = "elpris-led";                   // reachable as http://elpris-led.local
@@ -53,6 +58,11 @@ const int RING_SIZE       = PRICE_CACHE_SLOTS;   // per board, see platform.h
 const int TOMORROW_FETCH_MIN = 13 * 60 + 30;  // start looking for tomorrow's prices at 13:30 local time
 const int TOMORROW_ERROR_MIN = 16 * 60;       // missing tomorrow prices count as an error only after 16:00
 const int STATUS_LEDS        = 3;             // number of LEDs that blink magenta on fetch errors
+
+// Color modes
+const int COLOR_MODE_RANGE  = 0;   // cheapest to most expensive in the period shown (v3 and earlier)
+const int COLOR_MODE_NORMAL = 1;   // compared with a normal price (default from v4.0)
+const int MAX_HISTORY_DAYS  = 7;   // past days that can count in the normal price
 
 // How "now" is shown
 const int     DEFAULT_PAST_PCT = 10;    // passed time at 10 % of normal brightness, unless set otherwise
@@ -81,6 +91,7 @@ CRGB leds[MAX_LEDS];
 CRGB ledColor[MAX_LEDS];   // colors in time order; physicalLed() maps them onto the strip
 int  winStartSlot = 0;     // first slot in the display window (local midnight today)
 int  winSlots     = SLOTS_PER_DAY;   // one or two days, counted from real midnights (DST-safe)
+int  timeLeds     = 100;   // LEDs that show the timeline; in normal-price mode the rest show tomorrow
 
 // ---------- PRICE CACHE (ring buffer, key = absolute 15-minute slot since epoch) ----------
 int32_t slotId[RING_SIZE];
@@ -90,6 +101,35 @@ inline bool  hasSlot(int32_t s)   { return s >= 0 && slotId[s % RING_SIZE] == s;
 inline float getSlot(int32_t s)   { return slotPrice[s % RING_SIZE]; }
 inline void  putSlot(int32_t s, float p) { slotId[s % RING_SIZE] = s; slotPrice[s % RING_SIZE] = p; }
 void clearCache() { for (int i = 0; i < RING_SIZE; i++) slotId[i] = -1; }
+
+// Sum of the cached prices in slots [from, to)
+PriceSum sumSlots(int32_t from, int32_t to) {
+  PriceSum s;
+  for (int32_t x = from; x < to; x++) if (hasSlot(x)) s.add(getSlot(x));
+  return s;
+}
+
+// ---------- PRICE HISTORY (one sum per past day, for the normal price) ----------
+// Only a sum and a count per day are kept, not every quarter, so seven days fit in a few bytes.
+// HistoryDay is defined in elpris_logic.h.
+HistoryDay history[MAX_HISTORY_DAYS];
+
+HistoryDay* findHistory(int32_t start) {
+  for (HistoryDay& h : history) if (h.start == start) return &h;
+  return nullptr;
+}
+
+void storeHistory(int32_t start, const PriceSum& prices) {
+  HistoryDay* slot = findHistory(start);
+  if (!slot) {   // replace an empty entry, or else the oldest
+    slot = &history[0];
+    for (HistoryDay& h : history) if (h.start < slot->start) slot = &h;
+  }
+  slot->start = start;
+  slot->prices = prices;
+}
+
+void clearHistory() { for (HistoryDay& h : history) h = HistoryDay(); }
 
 // ---------- SETTINGS ----------
 Preferences preferences;
@@ -103,6 +143,12 @@ int  cfgNumLeds     = 100;
 bool cfgReverse     = false;  // true = time runs from the last LED to the first
 bool cfgPulseWhite  = true;   // true = the current LED pulses towards white, false = in its own color
 int  cfgPastPct     = DEFAULT_PAST_PCT;  // brightness of passed time in percent: 100 = not dimmed, 0 = off
+int  cfgColorMode   = COLOR_MODE_NORMAL;
+int  cfgHistDays    = 3;      // past days in the normal price, 0-7
+int  cfgNeutralOre  = 20;     // within +- this many öre of the normal price it doesn't matter (yellow)
+int  cfgStrongOre   = 80;     // from +- this many öre it is very cheap or very expensive
+bool cfgFiveLevels  = true;   // 5 levels (green, yellow-green, yellow, orange, red) or 3 (green, yellow, red)
+bool cfgNormTomorrow = true;  // count tomorrow in the normal price once its prices are known
 bool cfgAutoUpdate  = true;
 char cfgOtaPw[33]   = "";   // empty = OTA disabled
 char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
@@ -131,6 +177,13 @@ bool         otaActive     = false;
 bool         mdnsActive    = false;
 char         hostName[24]  = "elpris-led";   // network name, e.g. elpris-led-a1b2c3 (set in setup)
 
+// Shown in the web UI in normal-price mode
+float        normalPrice   = 0;              // SEK/kWh
+bool         normalValid   = false;
+int          normalDays    = 0;              // past days that were available for the normal price
+float        tomorrowDiffOre[TOMORROW_PERIOD_COUNT];
+bool         tomorrowDiffValid[TOMORROW_PERIOD_COUNT];
+
 String        latestVersion      = "";     // latest release seen on the install page
 String        updateMessage      = "";     // result of the last update attempt, shown in the web UI
 unsigned long nextUpdateCheckMs  = UPDATE_FIRST_CHECK_MS;
@@ -150,6 +203,10 @@ void sanitizeSettings() {
   cfgBrightNight = constrain(cfgBrightNight, 0, 255);
   cfgNumLeds     = constrain(cfgNumLeds, 1, MAX_LEDS);
   cfgPastPct     = constrain(cfgPastPct, 0, 100);
+  cfgColorMode   = constrain(cfgColorMode, COLOR_MODE_RANGE, COLOR_MODE_NORMAL);
+  cfgHistDays    = constrain(cfgHistDays, 0, MAX_HISTORY_DAYS);
+  cfgNeutralOre  = constrain(cfgNeutralOre, 1, 300);
+  cfgStrongOre   = constrain(cfgStrongOre, cfgNeutralOre, 500);   // "very" is never closer than the neutral zone
 
   if (strlen(cfgTz) < 3) strlcpy(cfgTz, DEFAULT_TZ, sizeof(cfgTz));
   if (strlen(cfgApPw) > 0 && strlen(cfgApPw) < 8) cfgApPw[0] = '\0';   // WPA2 requires at least 8 characters
@@ -171,6 +228,13 @@ void loadSettings() {
   int savedPastPct = preferences.getInt("pastpct", -1);
   cfgPastPct     = initialPastPercent(savedPastPct >= 0, savedPastPct,
                                       preferences.getBool("dimpast", true), DEFAULT_PAST_PCT);
+  // Lamps updating from v3 get the new default color mode; it can be switched back in the web UI
+  cfgColorMode   = preferences.getInt("colormode", COLOR_MODE_NORMAL);
+  cfgHistDays    = preferences.getInt("histdays", 3);
+  cfgNeutralOre  = preferences.getInt("neutral", 20);
+  cfgStrongOre   = preferences.getInt("strong", 80);
+  cfgFiveLevels  = preferences.getBool("levels5", true);
+  cfgNormTomorrow = preferences.getBool("normtmrw", true);
   cfgAutoUpdate  = preferences.getBool("autoupd", true);
   preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
   preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
@@ -188,6 +252,12 @@ void saveSettings() {
   preferences.putBool("reverse", cfgReverse);
   preferences.putBool("pulsewh", cfgPulseWhite);
   preferences.putInt("pastpct", cfgPastPct);
+  preferences.putInt("colormode", cfgColorMode);
+  preferences.putInt("histdays", cfgHistDays);
+  preferences.putInt("neutral", cfgNeutralOre);
+  preferences.putInt("strong", cfgStrongOre);
+  preferences.putBool("levels5", cfgFiveLevels);
+  preferences.putBool("normtmrw", cfgNormTomorrow);
   preferences.putBool("autoupd", cfgAutoUpdate);
   preferences.putString("otapw", cfgOtaPw);
   preferences.putString("appw", cfgApPw);
@@ -231,7 +301,9 @@ String describeFetchError(int code) {
   return HTTPClient::errorToString(code);   // connection, TLS and timeout errors
 }
 
-bool fetchDay(const String& url, int& code) {
+// Fetches one day of prices. With sumOnly, the prices are added to that sum (for past days in the
+// normal price) instead of being stored per quarter in the cache.
+bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
@@ -267,13 +339,26 @@ bool fetchDay(const String& url, int& code) {
       float p = item["SEK_per_kWh"] | 0.0f;
       int32_t s0, s1;
       priceSlots(a, b, s0, s1);
-      for (int32_t s = s0; s < s1; s++) { putSlot(s, p); stored++; }
+      for (int32_t s = s0; s < s1; s++) {
+        if (sumOnly) sumOnly->add(p); else putSlot(s, p);
+        stored++;
+      }
     } while (stream.findUntil(",", "]"));
   }
   http.end();
 
   if (stored == 0) { code = parseError ? FETCH_ERR_PARSE : FETCH_ERR_EMPTY; return false; }
   return true;
+}
+
+// The most recent past day missing from the history that the normal price needs, as a day offset
+// (-1 = yesterday), or 0 when nothing is missing or the normal-price mode isn't used
+int missingHistoryDay(time_t now) {
+  if (cfgColorMode != COLOR_MODE_NORMAL) return 0;
+  for (int k = 1; k <= cfgHistDays; k++) {
+    if (!findHistory(localMidnightSlot(now, -k))) return -k;
+  }
+  return 0;
 }
 
 void serviceFetch(const struct tm& t, time_t now) {
@@ -283,14 +368,31 @@ void serviceFetch(const struct tm& t, time_t now) {
   int32_t tomorrowSlot = localMidnightSlot(now, 1);
   int minutes = t.tm_hour * 60 + t.tm_min;
 
-  int dayOffset;
+  // Today first, then the past days for the normal price, then tomorrow once it may be published
+  int dayOffset = 0;
+  int missingDay = missingHistoryDay(now);
   if (!dayCovered(todaySlot)) dayOffset = 0;
+  else if (missingDay != 0) dayOffset = missingDay;
   else if (minutes >= TOMORROW_FETCH_MIN && !dayCovered(tomorrowSlot)) dayOffset = 1;
   else return;
 
   String memBefore = memoryInfo();
   int code = 0;
-  bool ok = fetchDay(priceUrl(now, dayOffset), code);
+
+  if (dayOffset < 0) {
+    // A past day: only its sum is kept. If it can't be fetched it is stored as empty and left out of the
+    // normal price, so a missing old day never blocks tomorrow's prices.
+    PriceSum day;
+    bool ok = fetchDay(priceUrl(now, dayOffset), code, &day);
+    storeHistory(localMidnightSlot(now, dayOffset), ok ? day : PriceSum());
+    needRebuild = true;
+    nextAttemptMs = millis() + 1000UL;
+    if (ok) Serial.printf("Prices fetched for the normal price (day %d)\n", dayOffset);
+    else    Serial.printf("Could not fetch day %d for the normal price: %s\n", dayOffset, describeFetchError(code).c_str());
+    return;
+  }
+
+  bool ok = fetchDay(priceUrl(now, dayOffset), code, nullptr);
   unsigned long ms = millis();
 
   if (ok) {
@@ -421,7 +523,56 @@ void serviceUpdate() {
 //  Build the colors for the strip
 // =====================================================================
 inline void ledRange(int i, int& s0, int& s1) {
-  ledSlotRange(i, winSlots, cfgNumLeds, s0, s1);
+  ledSlotRange(i, winSlots, timeLeds, s0, s1);
+}
+
+// Normal-price mode: today against the normal price on the first LEDs, then one off LED and one LED per
+// period comparing tomorrow with the same hours today. See elpris_logic.h for the levels and colors.
+void rebuildNormal(time_t now, bool tomorrow) {
+  int32_t tomorrowStart = winStartSlot + winSlots;
+
+  PriceSum pool = sumSlots(winStartSlot, tomorrowStart);
+  normalDays = 0;
+  for (int k = 1; k <= cfgHistDays; k++) {
+    HistoryDay* h = findHistory(localMidnightSlot(now, -k));
+    if (h && !h->prices.empty()) { pool.add(h->prices); normalDays++; }
+  }
+  if (tomorrow && cfgNormTomorrow) pool.add(sumSlots(tomorrowStart, localMidnightSlot(now, 2)));
+  normalValid = !pool.empty();
+  normalPrice = pool.mean();
+  float normalOre = normalPrice * 100;
+
+  CRGB prev = CRGB::Black;
+  for (int i = 0; i < timeLeds; i++) {
+    int s0, s1;
+    ledRange(i, s0, s1);
+    PriceSum led = sumSlots(winStartSlot + s0, winStartSlot + s1);
+    if (led.empty()) {
+      ledColor[i] = prev;
+    } else {
+      int level = levelForPrice(led.mean() * 100, normalOre, cfgNeutralOre, cfgStrongOre);
+      ledColor[i] = CHSV(levelHue(level, cfgFiveLevels), 255, 255);
+    }
+    prev = ledColor[i];
+  }
+
+  for (int p = 0; p < TOMORROW_PERIOD_COUNT; p++) tomorrowDiffValid[p] = false;
+  if (timeLeds >= cfgNumLeds) return;   // strip too short for tomorrow's LEDs
+
+  ledColor[timeLeds] = CRGB::Black;     // separates today from tomorrow
+  for (int p = 0; p < TOMORROW_PERIOD_COUNT; p++) {
+    int idx = timeLeds + 1 + p;
+    ledColor[idx] = CRGB::Black;        // off until tomorrow's prices are known
+    if (!tomorrow) continue;
+    const HourPeriod& hp = TOMORROW_PERIODS[p];
+    PriceSum today = sumSlots(localHourSlot(now, 0, hp.startHour), localHourSlot(now, 0, hp.endHour));
+    PriceSum tmrw  = sumSlots(localHourSlot(now, 1, hp.startHour), localHourSlot(now, 1, hp.endHour));
+    if (today.empty() || tmrw.empty()) continue;
+    float diffOre = (tmrw.mean() - today.mean()) * 100;
+    tomorrowDiffOre[p] = diffOre;
+    tomorrowDiffValid[p] = true;
+    ledColor[idx] = CHSV(levelHue(levelForDiff(diffOre, cfgNeutralOre, cfgStrongOre), cfgFiveLevels), 255, 255);
+  }
 }
 
 void rebuildTimeline(time_t now) {
@@ -430,6 +581,16 @@ void rebuildTimeline(time_t now) {
   int32_t tomorrowStart = localMidnightSlot(now, 1);
   int32_t dayAfterStart = localMidnightSlot(now, 2);
   bool tomorrow = dayCovered(tomorrowStart);
+  bool normalMode = cfgColorMode == COLOR_MODE_NORMAL;
+  timeLeds = dayLedCount(cfgNumLeds, normalMode);
+
+  if (normalMode) {
+    winSlots = tomorrowStart - winStartSlot;   // today only; tomorrow is summarized on the last LEDs
+    rebuildNormal(now, tomorrow);
+    return;
+  }
+
+  normalValid = false;
   winSlots = (tomorrow ? dayAfterStart : tomorrowStart) - winStartSlot;
 
   float mn = 1e9f, mx = -1e9f;
@@ -441,7 +602,7 @@ void rebuildTimeline(time_t now) {
   }
 
   CRGB prev = CRGB::Black;
-  for (int i = 0; i < cfgNumLeds; i++) {
+  for (int i = 0; i < timeLeds; i++) {
     int s0, s1;
     ledRange(i, s0, s1);
     float sum = 0; int cnt = 0;
@@ -496,6 +657,10 @@ String checkbox(const char* name, bool checked, const char* label, const char* h
          label + "</label><br><small>" + help + "</small></p>";
 }
 
+String option(const String& value, const String& label, bool selected) {
+  return "<option value='" + value + "'" + (selected ? " selected" : "") + ">" + label + "</option>";
+}
+
 // Drop-down with the time zones in TIME_ZONES, with the current one selected. A time zone that isn't in
 // the list (set by an older version) is kept as its own entry, so saving the page doesn't change it.
 String timeZoneSelect() {
@@ -505,20 +670,50 @@ String timeZoneSelect() {
     const TimeZoneChoice& z = TIME_ZONES[i];
     bool sel = strcmp(cfgTz, z.tz) == 0;
     found = found || sel;
-    s += "<option value='" + String(z.tz) + "'" + (sel ? " selected" : "") + ">" + z.label + "</option>";
+    s += option(z.tz, z.label, sel);
   }
   if (!found) {
     String tz = htmlEscape(String(cfgTz));
-    s += "<option value='" + tz + "' selected>Custom (" + tz + ")</option>";
+    s += option(tz, "Custom (" + tz + ")", true);
   }
   s += "</select>";
+  return s;
+}
+
+String signedOre(float ore) {
+  return String(ore >= 0 ? "+" : "") + String((int)lroundf(ore)) + " öre";
+}
+
+// Normal price and tomorrow's comparison, shown under Live Status in normal-price mode
+String normalModeStatus() {
+  if (cfgColorMode != COLOR_MODE_NORMAL) return "";
+  String s = "<p><strong>Normal price:</strong> ";
+  if (normalValid) {
+    s += String((int)lroundf(normalPrice * 100)) + " öre<br><small>Average of ";
+    s += normalDays ? String(normalDays) + (normalDays == 1 ? " past day, " : " past days, ") : String("");
+    s += "today";
+    s += (cfgNormTomorrow && tomorrowDiffValid[0]) ? " and tomorrow" : "";
+    s += ". Yellow within ±" + String(cfgNeutralOre) + " öre.</small>";
+  } else {
+    s += "not known yet";
+  }
+  s += "</p>";
+  if (timeLeds < cfgNumLeds) {
+    s += "<p><strong>Tomorrow vs today:</strong> ";
+    for (int p = 0; p < TOMORROW_PERIOD_COUNT; p++) {
+      if (p) s += ", ";
+      s += String(TOMORROW_PERIODS[p].label) + " ";
+      s += tomorrowDiffValid[p] ? signedOre(tomorrowDiffOre[p]) : String("not published yet");
+    }
+    s += "</p>";
+  }
   return s;
 }
 
 void handleRoot() {
   time_t now = time(nullptr);
   int32_t ns = (int32_t)(now / SLOT_SEC);
-  String priceTxt = (now > 1700000000 && hasSlot(ns)) ? String(getSlot(ns), 2) + " SEK/kWh" : String("unavailable");
+  String priceTxt = (now > 1700000000 && hasSlot(ns)) ? String((int)lroundf(getSlot(ns) * 100)) + " öre/kWh" : String("unavailable");
   String status = fetchFailing ? "Cannot fetch prices (retrying automatically)" : "OK";
   if (fetchFailing && lastFetchError.length()) status += "<br><small>Last error: " + htmlEscape(lastFetchError) + "</small>";
   String otaTxt = otaActive ? "Active" : "Off (set an OTA password below)";
@@ -533,16 +728,17 @@ void handleRoot() {
   else if (restartingForUpdate) refresh = "<meta http-equiv='refresh' content='30;url=/'>";
 
   String html;
-  html.reserve(8500);
+  html.reserve(11000);
   html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>" + refresh;
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
   html += "input[type=checkbox]{width:auto;margin-right:8px;}";
   html += "button{width:100%;padding:12px;background:#4CAF50;color:white;border:none;border-radius:4px;font-size:16px;font-weight:bold;cursor:pointer;}";
-  html += ".card{background:#1e1e1e;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;}small{color:#999;}</style></head><body>";
+  html += ".card{background:#1e1e1e;padding:15px;border-radius:8px;margin-bottom:15px;border:1px solid #333;}small{color:#999;}h4{margin:18px 0 4px;}</style></head><body>";
 
   html += "<h2>Elpris LED</h2><div class='card'><h3>Live Status</h3>";
   html += "<p><strong>Current price:</strong> " + priceTxt + "<br><small>Spot price excl. VAT, grid fees and tax</small></p>";
+  html += normalModeStatus();
   html += "<p><strong>Area:</strong> " + String(cfgArea) + "</p>";
   html += "<p><strong>Status:</strong> " + status + "</p>";
   html += "<p><strong>OTA:</strong> " + otaTxt + "</p>";
@@ -558,13 +754,31 @@ void handleRoot() {
   html += "<div class='card'><h3>Settings</h3><form action='/save' method='POST'>";
   html += "<label>Price area:</label><select name='area'>";
   const char* areas[] = {"SE1", "SE2", "SE3", "SE4"};
-  for (int i = 0; i < 4; i++) {
-    html += "<option value='" + String(areas[i]) + "'" + (String(cfgArea) == areas[i] ? " selected" : "") + ">" + areas[i] + "</option>";
-  }
+  for (int i = 0; i < 4; i++) html += option(areas[i], areas[i], String(cfgArea) == areas[i]);
   html += "</select>";
 
   html += "<label>Number of LEDs (changing it restarts the device):</label><input type='number' name='leds' min='1' max='" + String(MAX_LEDS) + "' value='" + String(cfgNumLeds) + "'>";
 
+  html += "<h4>Colors</h4><select name='colormode'>";
+  html += option(String(COLOR_MODE_NORMAL), "Compared with a normal price", cfgColorMode == COLOR_MODE_NORMAL);
+  html += option(String(COLOR_MODE_RANGE), "Cheapest to most expensive", cfgColorMode == COLOR_MODE_RANGE);
+  html += "</select><p><small><b>Compared with a normal price:</b> today from midnight to midnight, green when cheaper than "
+          "usual, yellow when it doesn't matter, red when more expensive. The last three LEDs are one off LED and two that "
+          "compare tomorrow 08-17 and 17-24 with the same hours today (off until tomorrow's prices are published). "
+          "<b>Cheapest to most expensive:</b> today, and tomorrow once published, from green to red within that period.</small></p>";
+
+  html += "<label>Normal price: past days (0-7):</label><input type='number' name='histdays' min='0' max='7' value='" + String(cfgHistDays) + "'>";
+  html += "<label>Doesn't matter within (± öre):</label><input type='number' name='neutral' min='1' max='300' value='" + String(cfgNeutralOre) + "'>";
+  html += "<label>Very cheap or expensive from (± öre):</label><input type='number' name='strong' min='1' max='500' value='" + String(cfgStrongOre) + "'>";
+  html += "<label>Levels:</label><select name='levels'>";
+  html += option("5", "5: green, yellow-green, yellow, orange, red", cfgFiveLevels);
+  html += option("3", "3: green, yellow, red", !cfgFiveLevels);
+  html += "</select>";
+  html += checkbox("normtmrw", cfgNormTomorrow, "Count tomorrow in the normal price",
+                   "Today's colors may then change when tomorrow's prices arrive after lunch: an expensive tomorrow makes today greener.");
+  html += "<p><small>These settings apply to <i>Compared with a normal price</i>. Prices are spot prices excl. VAT, in öre.</small></p>";
+
+  html += "<h4>Strip</h4>";
   html += checkbox("reverse", cfgReverse, "Reverse direction",
                    "Normally midnight is at the end where the strip's cable is connected. Tick this if time runs the wrong way, e.g. right to left.");
   html += checkbox("pulsewh", cfgPulseWhite, "Pulse the current 15 minutes towards white",
@@ -582,6 +796,7 @@ void handleRoot() {
   html += "<label>Day brightness (1-255):</label><input type='number' name='bday' min='1' max='255' value='" + String(cfgBrightDay) + "'>";
   html += "<label>Night brightness (0-255):</label><input type='number' name='bnight' min='0' max='255' value='" + String(cfgBrightNight) + "'>";
 
+  html += "<h4>Device</h4>";
   html += "<p><label><input type='checkbox' name='autoupd' value='1'" + String(cfgAutoUpdate ? " checked" : "") + ">Install new releases automatically</label></p>";
 
   html += "<label>OTA password (empty = unchanged, changing it restarts the device):</label>";
@@ -589,7 +804,8 @@ void handleRoot() {
   html += "<label>Config portal password, at least 8 characters (empty = unchanged):</label>";
   html += "<input type='password' name='appw' minlength='8' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgApPw) ? "(set)" : "(open portal)") + "'>";
 
-  html += "<button type='submit'>Save changes</button></form></div></body></html>";
+  html += "<button type='submit'>Save changes</button></form></div>";
+  html += "<p><small>Try the settings without a lamp in the <a style='color:#9ad' href='https://flysen.github.io/elpris-led/emulator/'>emulator</a>.</small></p></body></html>";
 
   server.send(200, "text/html", html);
 }
@@ -601,17 +817,23 @@ void handleSave() {
   int oldLeds = cfgNumLeds;
   bool otaPwChanged = false;
 
-  if (server.hasArg("area"))    server.arg("area").toCharArray(cfgArea, sizeof(cfgArea));
-  if (server.hasArg("tz"))      server.arg("tz").toCharArray(cfgTz, sizeof(cfgTz));
-  if (server.hasArg("nstart"))  cfgNightStart  = server.arg("nstart").toInt();
-  if (server.hasArg("nend"))    cfgNightEnd    = server.arg("nend").toInt();
-  if (server.hasArg("bday"))    cfgBrightDay   = server.arg("bday").toInt();
-  if (server.hasArg("bnight"))  cfgBrightNight = server.arg("bnight").toInt();
-  if (server.hasArg("leds"))    cfgNumLeds     = server.arg("leds").toInt();
-  if (server.hasArg("pastpct")) cfgPastPct     = server.arg("pastpct").toInt();
-  cfgReverse    = server.hasArg("reverse");   // unchecked boxes are not sent
-  cfgPulseWhite = server.hasArg("pulsewh");
-  cfgAutoUpdate = server.hasArg("autoupd");
+  if (server.hasArg("area"))      server.arg("area").toCharArray(cfgArea, sizeof(cfgArea));
+  if (server.hasArg("tz"))        server.arg("tz").toCharArray(cfgTz, sizeof(cfgTz));
+  if (server.hasArg("nstart"))    cfgNightStart  = server.arg("nstart").toInt();
+  if (server.hasArg("nend"))      cfgNightEnd    = server.arg("nend").toInt();
+  if (server.hasArg("bday"))      cfgBrightDay   = server.arg("bday").toInt();
+  if (server.hasArg("bnight"))    cfgBrightNight = server.arg("bnight").toInt();
+  if (server.hasArg("leds"))      cfgNumLeds     = server.arg("leds").toInt();
+  if (server.hasArg("pastpct"))   cfgPastPct     = server.arg("pastpct").toInt();
+  if (server.hasArg("colormode")) cfgColorMode   = server.arg("colormode").toInt();
+  if (server.hasArg("histdays"))  cfgHistDays    = server.arg("histdays").toInt();
+  if (server.hasArg("neutral"))   cfgNeutralOre  = server.arg("neutral").toInt();
+  if (server.hasArg("strong"))    cfgStrongOre   = server.arg("strong").toInt();
+  if (server.hasArg("levels"))    cfgFiveLevels  = server.arg("levels").toInt() != 3;
+  cfgReverse      = server.hasArg("reverse");   // unchecked boxes are not sent
+  cfgPulseWhite   = server.hasArg("pulsewh");
+  cfgNormTomorrow = server.hasArg("normtmrw");
+  cfgAutoUpdate   = server.hasArg("autoupd");
 
   if (server.hasArg("otapw") && server.arg("otapw").length() > 0) {
     String pw = server.arg("otapw");
@@ -624,15 +846,16 @@ void handleSave() {
   sanitizeSettings();
   saveSettings();
 
-  if (strcmp(oldTz, cfgTz) != 0) { applyTimezone(); needRebuild = true; }
+  if (strcmp(oldTz, cfgTz) != 0) applyTimezone();
   if (strcmp(oldArea, cfgArea) != 0) {
     clearCache();
-    nextAttemptMs = 0;
+    clearHistory();
     failStreak = 0;
     fetchFailing = false;
     lastFetchError = "";
-    needRebuild = true;
   }
+  nextAttemptMs = 0;      // fetch any past days a changed normal-price setting needs
+  needRebuild = true;     // colors depend on most settings, so always recalculate
   if (oldLeds != cfgNumLeds || otaPwChanged) restartAtMs = millis() + 1500;
 
   server.sendHeader("Location", "/", true);
@@ -694,10 +917,12 @@ void connectWifi() {
 void setup() {
   Serial.begin(115200);
   clearCache();
+  clearHistory();
   Serial.printf("Elpris-LED %s (%s)\n", FW_VERSION, BOARD_NAME);
 
   if (!preferences.begin("elpris-config", false)) Serial.println("Could not open settings storage");
   loadSettings();
+  timeLeds = dayLedCount(cfgNumLeds, cfgColorMode == COLOR_MODE_NORMAL);
 
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(leds, cfgNumLeds);
   FastLED.setBrightness(cfgBrightDay);
@@ -781,12 +1006,17 @@ void loop() {
     return;
   }
 
-  // ledColor is in time order (midnight first); physicalLed() puts it on the strip in the chosen direction
+  // ledColor is in time order (midnight first); physicalLed() puts it on the strip in the chosen direction.
+  // LEDs after the timeline (tomorrow in normal-price mode) are never dimmed and never pulse.
   int cur = nowSlot - winStartSlot;
   for (int i = 0; i < cfgNumLeds; i++) {
-    int s0, s1;
-    ledRange(i, s0, s1);
-    leds[physicalLed(i, cfgNumLeds, cfgReverse)] = displayColor(ledColor[i], ledTimeState(s0, s1, cur));
+    CRGB c = ledColor[i];
+    if (i < timeLeds) {
+      int s0, s1;
+      ledRange(i, s0, s1);
+      c = displayColor(c, ledTimeState(s0, s1, cur));
+    }
+    leds[physicalLed(i, cfgNumLeds, cfgReverse)] = c;
   }
 
   // Error indicator on the first LEDs in time order, so it follows the chosen direction too

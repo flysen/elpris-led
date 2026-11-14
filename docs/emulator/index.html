@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elpris-LED emulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Layout: the LED strips at the top as a stage, the price chart below, then the control panels in a grid */
+  --bg: #0d1014;
+  --panel: #151a21;
+  --line: #262d38;
+  --ink: #e7e9ee;
+  --muted: #8a93a3;
+  --accent: #f2b84b;
+  --strip: #07090c;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", Roboto, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.45; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 48px; display: grid; gap: 18px; }
+h1 { font-family: var(--display); font-weight: 700; font-size: 26px; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+h2 { font-family: var(--display); font-weight: 500; font-size: 16px; margin: 0 0 12px; color: var(--ink); text-wrap: balance; }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
+header a, footer a { color: var(--accent); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+.stage { display: grid; gap: 14px; }
+.strip-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 6px; }
+.strip-head .name { font-family: var(--display); font-weight: 600; font-size: 14px; }
+.chip { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
+.legend { display: flex; align-items: center; gap: 8px; margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.legend canvas { width: 150px; height: 10px; border-radius: 3px; display: block; }
+canvas.strip { width: 100%; height: 74px; display: block; cursor: crosshair; }
+canvas.chart { width: 100%; height: 220px; display: block; cursor: crosshair; }
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.tile .k { font-size: 12px; color: var(--muted); }
+.tile .v { font-family: var(--mono); font-size: 17px; font-variant-numeric: tabular-nums; }
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+.ctl { display: grid; gap: 4px; margin-bottom: 12px; }
+.ctl .lab { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.ctl .lab output { font-family: var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
+.help { font-size: 12px; color: var(--muted); margin: 0; }
+select, input[type=number], input[type=date], textarea {
+  width: 100%; background: #0f1318; color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
+  padding: 7px 9px; font-family: var(--body); font-size: 14px;
+}
+textarea { font-family: var(--mono); font-size: 12px; min-height: 90px; resize: vertical; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-bottom: 10px; cursor: pointer; }
+.check input { margin-top: 2px; }
+.btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
+button {
+  font-family: var(--body); font-size: 14px; font-weight: 600; background: #222934; color: var(--ink);
+  border: 1px solid #364051; border-radius: 6px; padding: 7px 12px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: #1a1406; border-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hidden { display: none !important; }
+.paste-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.url { font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--muted); }
+.url a { color: var(--accent); }
+.msg { font-size: 13px; min-height: 1.2em; }
+.msg.err { color: #ff8a7a; }
+.msg.ok { color: #8fd694; }
+#tip {
+  position: fixed; pointer-events: none; z-index: 10; background: #0a0d11; border: 1px solid #3a4352; border-radius: 6px;
+  padding: 6px 9px; font-family: var(--mono); font-size: 12px; color: var(--ink); white-space: pre; display: none;
+}
+footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
+@media (max-width: 420px) { .two { grid-template-columns: 1fr; } .legend { margin-left: 0; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Elpris-LED emulator</h1>
+    <p>Runs the color logic of Elpris-LED v4 in the browser. The top strip is the default color mode, <i>Compared with a normal price</i>. Below it is the other mode, <i>Cheapest to most expensive</i>, and optionally a third strip with free variants of it to experiment with. <a href="../">Install page</a> · <a href="https://github.com/flysen/elpris-led">GitHub</a></p>
+  </header>
+
+  <section class="card stage" aria-label="Strips and price chart">
+    <div id="propBlock">
+      <div class="strip-head">
+        <span class="name">Compared with a normal price (default)</span>
+        <span class="chip" id="propDesc"></span>
+        <div class="legend" id="propKey"></div>
+      </div>
+      <canvas id="stripProp" class="strip"></canvas>
+    </div>
+    <div>
+      <div class="strip-head">
+        <span class="name">Cheapest to most expensive</span>
+        <span class="chip">relative scale, whole window, average per LED</span>
+        <div class="legend"><span id="lgOrigLo"></span><canvas id="lgOrig" width="300" height="20"></canvas><span id="lgOrigHi"></span></div>
+      </div>
+      <canvas id="stripOrig" class="strip"></canvas>
+    </div>
+    <div id="variantBlock">
+      <div class="strip-head">
+        <span class="name">Variant</span>
+        <span class="chip" id="varDesc"></span>
+        <div class="legend"><span id="lgVarLo"></span><canvas id="lgVar" width="300" height="20"></canvas><span id="lgVarHi"></span></div>
+      </div>
+      <canvas id="stripVar" class="strip"></canvas>
+    </div>
+    <div class="readout" id="readout"></div>
+    <canvas id="chart" class="chart"></canvas>
+  </section>
+
+  <section class="controls">
+    <div class="card">
+      <h2>Time and prices</h2>
+      <div class="ctl">
+        <div class="lab"><label for="scenario">Price day</label></div>
+        <select id="scenario">
+          <option value="winter">Ordinary winter day (example)</option>
+          <option value="flat">Evenly cheap day (example)</option>
+          <option value="spike">A high evening peak (example)</option>
+          <option value="negative">Negative prices around midday (example)</option>
+          <option value="cheapweek">Cheap week, more expensive today (example)</option>
+          <option value="dearmorrow">Normal day, very expensive tomorrow (example)</option>
+          <option value="pasted" disabled>Pasted real prices</option>
+        </select>
+      </div>
+      <div class="btnrow" style="margin-bottom:12px"><button id="reseed" type="button">New random example days</button></div>
+      <div class="ctl">
+        <div class="lab"><label for="time">Simulated clock</label><output id="timeOut"></output></div>
+        <input id="time" type="range" min="0" max="1439" step="1" value="840">
+      </div>
+      <div class="two">
+        <div class="ctl">
+          <div class="lab"><label for="speed">Playback</label></div>
+          <select id="speed">
+            <option value="15">15 min per second</option>
+            <option value="60" selected>1 hour per second</option>
+            <option value="180">3 hours per second</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><span>&nbsp;</span></div>
+          <button id="play" type="button" class="primary">Play</button>
+        </div>
+      </div>
+      <label class="check"><input id="live" type="checkbox"><span>Follow the real clock</span></label>
+      <div class="ctl">
+        <div class="lab"><label for="tomorrow">Tomorrow's prices</label></div>
+        <select id="tomorrow">
+          <option value="auto">Like the lamp: available from 13:30</option>
+          <option value="always">Always available</option>
+          <option value="never">Never available</option>
+        </select>
+        <p class="help">The lamp starts looking for tomorrow's prices at 13:30. When they arrive, the colors are recalculated.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>The strip (the lamp's settings)</h2>
+      <div class="ctl">
+        <div class="lab"><label for="leds">Number of LEDs</label><output id="ledsOut"></output></div>
+        <input id="leds" type="range" min="10" max="300" step="1" value="100">
+        <p class="help">The lamp's default is 100. With 96 or 192, every LED gets whole quarters.</p>
+      </div>
+      <label class="check"><input id="reverse" type="checkbox"><span>Reverse direction (midnight at the other end)</span></label>
+      <label class="check"><input id="pulseWhite" type="checkbox" checked><span>Pulse the current 15 minutes towards white</span></label>
+      <div class="ctl">
+        <div class="lab"><label for="pastPct">Brightness of passed time</label><output id="pastOut"></output></div>
+        <input id="pastPct" type="range" min="0" max="100" step="1" value="10">
+      </div>
+      <label class="check"><input id="applyBright" type="checkbox"><span>Simulate brightness and night mode</span></label>
+      <div id="brightBox" class="hidden">
+        <div class="two">
+          <div class="ctl"><div class="lab"><label for="bday">Day (0–255)</label><output id="bdayOut"></output></div><input id="bday" type="range" min="1" max="255" value="40"></div>
+          <div class="ctl"><div class="lab"><label for="bnight">Night (0–255)</label><output id="bnightOut"></output></div><input id="bnight" type="range" min="0" max="255" value="5"></div>
+        </div>
+        <div class="two">
+          <div class="ctl"><div class="lab"><label for="nstart">Night starts (hour)</label></div><input id="nstart" type="number" min="0" max="23" value="23"></div>
+          <div class="ctl"><div class="lab"><label for="nend">Night ends (hour)</label></div><input id="nend" type="number" min="0" max="23" value="6"></div>
+        </div>
+      </div>
+      <label class="check"><input id="perceptual" type="checkbox" checked><span>Show LED light the way the eye sees it
+        <br><span class="help">LEDs are linear but the eye is logarithmic, so 10 % looks like about a third. Off: raw values straight to the screen.</span></span></label>
+    </div>
+
+    <div class="card">
+      <h2>Compared with a normal price</h2>
+      <p class="help" style="margin-bottom:12px">Today fills the strip from midnight to midnight, colored by how the price compares with a normal price. Yellow means it doesn't matter. After one off LED come two LEDs comparing tomorrow's average 08–17 and 17–24 with the same hours today. They are off until tomorrow's prices are published, which the lamp notices from 13:30.</p>
+      <label class="check"><input id="showProp" type="checkbox" checked><span>Show this mode</span></label>
+      <div class="ctl">
+        <div class="lab"><label for="histDays">Normal price: past days</label><output id="histDaysOut"></output></div>
+        <input id="histDays" type="range" min="0" max="7" step="1" value="3">
+        <p class="help" id="histHelp">The average of these days plus today and, if ticked below, tomorrow.</p>
+      </div>
+      <label class="check"><input id="normTomorrow" type="checkbox" checked><span>Count tomorrow in the normal price
+        <br><span class="help">Today's colors may then change when tomorrow's prices arrive: an expensive tomorrow makes today greener.</span></span></label>
+      <div class="ctl">
+        <div class="lab"><label for="dead">Doesn't matter within</label><output id="deadOut"></output></div>
+        <input id="dead" type="range" min="5" max="100" step="5" value="20">
+      </div>
+      <div class="ctl">
+        <div class="lab"><label for="extreme">Very cheap or expensive from</label><output id="extremeOut"></output></div>
+        <input id="extreme" type="range" min="20" max="300" step="10" value="80">
+        <p class="help">In öre from the normal price. A price of zero or less is always very cheap. The same limits apply to the two tomorrow LEDs, measured as the difference from today. Only used with 5 levels.</p>
+      </div>
+      <div class="ctl">
+        <div class="lab"><label for="levels">Levels</label></div>
+        <select id="levels">
+          <option value="5" selected>5: green, yellow-green, yellow, orange, red</option>
+          <option value="3">3: green, yellow, red</option>
+        </select>
+      </div>
+      <label class="check"><input id="ticks" type="checkbox"><span>Mark 06, 12 and 18 with a faint white LED (emulator only)</span></label>
+    </div>
+
+    <div class="card">
+      <h2>Variants of the algorithm (experiments)</h2>
+      <p class="help" style="margin-bottom:12px">Ideas for other scales, for comparison. These are not in the lamp.</p>
+      <label class="check"><input id="showVar" type="checkbox"><span>Show the variant strip</span></label>
+      <div class="ctl">
+        <div class="lab"><label for="scale">Color scale</label></div>
+        <select id="scale">
+          <option value="relative">Relative, cheapest–most expensive (the lamp)</option>
+          <option value="minspan" selected>Relative with a minimum span</option>
+          <option value="rank">Ranking (as many of each color)</option>
+          <option value="absolute">Fixed limits in öre</option>
+        </select>
+      </div>
+      <div class="ctl" id="minspanBox">
+        <div class="lab"><label for="minspan">Minimum span</label><output id="minspanOut"></output></div>
+        <input id="minspan" type="range" min="5" max="300" step="5" value="50">
+        <p class="help">The cheapest is always green. If the difference between cheapest and most expensive is smaller than the span, it never turns fully red.</p>
+      </div>
+      <div id="absBox" class="two hidden">
+        <div class="ctl"><div class="lab"><label for="absLo">Green below (öre)</label></div><input id="absLo" type="number" step="5" value="30"></div>
+        <div class="ctl"><div class="lab"><label for="absHi">Red above (öre)</label></div><input id="absHi" type="number" step="5" value="200"></div>
+      </div>
+      <div class="ctl">
+        <div class="lab"><label for="basis">Basis for cheapest and most expensive</label></div>
+        <select id="basis">
+          <option value="window">The whole window (the lamp)</option>
+          <option value="remaining">Only the time that is left</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <div class="lab"><label for="win">What the strip shows</label></div>
+        <select id="win">
+          <option value="orig">Midnight to midnight (the lamp)</option>
+          <option value="rolling">From now to the last known price</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <div class="lab"><label for="agg">When an LED covers several quarters</label></div>
+        <select id="agg">
+          <option value="mean">Average (the lamp)</option>
+          <option value="max">Most expensive quarter</option>
+          <option value="min">Cheapest quarter</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <div class="lab"><label for="gamma">Curve</label><output id="gammaOut"></output></div>
+        <input id="gamma" type="range" min="0.3" max="3" step="0.1" value="1">
+        <p class="help">1 is linear. Above 1, more quarters are green and only the peaks are red.</p>
+      </div>
+      <div class="two">
+        <div class="ctl">
+          <div class="lab"><label for="steps">Color steps</label></div>
+          <select id="steps">
+            <option value="0">Continuous (the lamp)</option>
+            <option value="3">3 levels</option>
+            <option value="4">4 levels</option>
+            <option value="5">5 levels</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="palette">Palette</label></div>
+          <select id="palette">
+            <option value="orig">Green to red via yellow (the lamp)</option>
+            <option value="gyr">Pure green, yellow, red</option>
+            <option value="bluered">Blue to red</option>
+          </select>
+        </div>
+      </div>
+      <div class="btnrow"><button id="resetVar" type="button">Reset the variant to the lamp</button></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Real prices</h2>
+    <p class="help" style="margin-bottom:12px">The page can't fetch prices by itself. Open the addresses below in a new tab, select everything, copy and paste it here. Tomorrow can be left empty.</p>
+    <div class="paste-grid">
+      <div>
+        <div class="two">
+          <div class="ctl"><div class="lab"><label for="pDate">Date</label></div><input id="pDate" type="date"></div>
+          <div class="ctl"><div class="lab"><label for="pArea">Price area</label></div>
+            <select id="pArea"><option>SE1</option><option>SE2</option><option selected>SE3</option><option>SE4</option></select></div>
+        </div>
+        <p class="url">Today: <a id="urlToday" target="_blank" rel="noopener"></a></p>
+        <p class="url">Tomorrow: <a id="urlTomorrow" target="_blank" rel="noopener"></a></p>
+      </div>
+      <div class="ctl"><div class="lab"><label for="jsonToday">Today's JSON</label></div><textarea id="jsonToday" placeholder='[{"SEK_per_kWh":0.53,"time_start":"…T00:00:00+01:00", …}]'></textarea></div>
+      <div class="ctl"><div class="lab"><label for="jsonTomorrow">Tomorrow's JSON (optional)</label></div><textarea id="jsonTomorrow"></textarea></div>
+    </div>
+    <div class="btnrow"><button id="usePasted" type="button" class="primary">Use the pasted prices</button></div>
+    <p class="msg" id="pasteMsg"></p>
+  </section>
+
+  <footer>Emulator and the normal-price color mode designed by <a href="https://github.com/sealjo">@sealjo</a>. The example days are made up but have a realistic shape. The emulator counts 96 quarters per day and ignores the 23- and 25-hour days at the daylight saving time changes; the lamp handles them. Colors follow the FastLED rainbow color wheel that the lamp uses.</footer>
+</main>
+<div id="tip"></div>
+
+<script>
+"use strict";
+// Keep this in step with the lamp: the logic mirrors elpris_led/elpris_logic.h and rebuildTimeline() in the sketch.
+const $ = id => document.getElementById(id);
+const SLOTS = 96;
+const PAST = 0, NOW = 1, FUTURE = 2;
+const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* ---------- FastLED equivalents ---------- */
+const scale8 = (i, s) => (i * (1 + s)) >> 8;
+function rainbow(hue) {               // hsv2rgb_rainbow with full saturation and brightness
+  hue &= 255;
+  const offset8 = (hue & 0x1f) << 3, third = scale8(offset8, 85);
+  let r, g, b;
+  if (!(hue & 0x80)) {
+    if (!(hue & 0x40)) {
+      if (!(hue & 0x20)) { r = 255 - third; g = third; b = 0; }
+      else { r = 171; g = 85 + third; b = 0; }
+    } else {
+      if (!(hue & 0x20)) { const tt = scale8(offset8, 170); r = 171 - tt; g = 170 + third; b = 0; }
+      else { r = 0; g = 255 - third; b = third; }
+    }
+  } else {
+    if (!(hue & 0x40)) {
+      if (!(hue & 0x20)) { const tt = scale8(offset8, 170); r = 0; g = 171 - tt; b = 85 + tt; }
+      else { r = third; g = 0; b = 255 - third; }
+    } else {
+      if (!(hue & 0x20)) { r = 85 + third; g = 0; b = 171 - third; }
+      else { r = 170 + third; g = 0; b = 85 - third; }
+    }
+  }
+  return [r, g, b];
+}
+function beatsin8(t, lo, hi) {        // 30 beats per minute = one pulse every two seconds
+  if (reduceMotion) return lo + ((hi - lo) >> 1);
+  const s = Math.round(128 + 127 * Math.sin(2 * Math.PI * ((t % 2000) / 2000)));
+  return lo + scale8(s, hi - lo);
+}
+const srgb = x => x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055;
+const isNightHour = (h, s, e) => s > e ? (h >= s || h < e) : (h >= s && h < e);
+
+/* ---------- Example data ---------- */
+function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const gauss = (x, mu, s) => Math.exp(-((x - mu) ** 2) / (2 * s * s));
+function genDay(kind, rng, dayIdx, scale = 1) {
+  const out = []; let n = 0;
+  const lvl = 0.8 + rng() * 0.5, mShift = (rng() - 0.5) * 1.5, eShift = (rng() - 0.5) * 1.5;
+  for (let s = 0; s < SLOTS; s++) {
+    n = n * 0.82 + (rng() - 0.5) * 0.12;
+    const h = s / 4; let v;
+    switch (kind) {
+      case "winter": v = lvl * (0.32 + 0.8 * gauss(h, 8 + mShift, 1.4) + 1.0 * gauss(h, 18 + eShift, 1.8) + 0.25 * gauss(h, 13, 3)) + n; break;
+      case "flat": v = 0.06 + 0.015 * gauss(h, 8, 2) + 0.022 * gauss(h, 18, 2) + n * 0.06; break;
+      case "spike": v = 0.38 + 0.08 * gauss(h, 8, 1.5) + (dayIdx === 0 ? 3.0 : 2.2) * gauss(h, 18 + eShift * 0.5, 0.7) + n * 0.3; break;
+      case "negative": v = 0.3 + 0.2 * gauss(h, 7, 1.5) + 0.38 * gauss(h, 20, 1.5) - 0.42 * gauss(h, 13, 2.2) + n * 0.4; break;
+      case "low": v = 0.09 + 0.03 * gauss(h, 8, 2) + 0.04 * gauss(h, 18, 2) + n * 0.12; break;
+    }
+    out.push(Math.round(v * scale * 100000) / 100000);
+  }
+  return out;
+}
+// Per example: [kind, scale] for the past days, today and tomorrow
+const SCEN = {
+  winter: { p: ["winter", 1], t: ["winter", 1], m: ["winter", 1] },
+  flat: { p: ["flat", 1], t: ["flat", 1], m: ["flat", 1] },
+  spike: { p: ["winter", 0.7], t: ["spike", 1], m: ["spike", 1] },
+  negative: { p: ["negative", 1], t: ["negative", 1], m: ["negative", 1] },
+  cheapweek: { p: ["low", 1], t: ["winter", 0.75], m: ["winter", 0.7] },
+  dearmorrow: { p: ["winter", 1], t: ["winter", 1], m: ["winter", 2.5] }
+};
+let seed = 11, days = [null, null], hist = [], pasted = null;
+function regen() {
+  const kind = $("scenario").value;
+  if (kind === "pasted" && pasted) { days = pasted; hist = []; return; }
+  const sp = SCEN[kind], rng = mulberry32(seed * 7919 + kind.length * 31);
+  hist = [];
+  for (let d = 7; d >= 1; d--) hist.push(genDay(sp.p[0], rng, -d, sp.p[1]));   // oldest first
+  days = [genDay(sp.t[0], rng, 0, sp.t[1]), genDay(sp.m[0], rng, 1, sp.m[1])];
+}
+
+/* ---------- Settings ---------- */
+let S = {};
+function readS() {
+  S = {
+    minute: +$("time").value, speed: +$("speed").value, live: $("live").checked, tomorrow: $("tomorrow").value,
+    N: +$("leds").value, reverse: $("reverse").checked, pulseWhite: $("pulseWhite").checked, pastPct: +$("pastPct").value,
+    applyBright: $("applyBright").checked, bday: +$("bday").value, bnight: +$("bnight").value,
+    nstart: Math.min(23, Math.max(0, +$("nstart").value | 0)), nend: Math.min(23, Math.max(0, +$("nend").value | 0)),
+    perceptual: $("perceptual").checked, showVar: $("showVar").checked
+  };
+  S.V = {
+    scale: $("scale").value, minspan: +$("minspan").value / 100, absLo: +$("absLo").value / 100, absHi: +$("absHi").value / 100,
+    basis: $("basis").value, win: $("win").value, agg: $("agg").value, gamma: +$("gamma").value,
+    steps: +$("steps").value, palette: $("palette").value
+  };
+  S.P = {
+    show: $("showProp").checked, histDays: +$("histDays").value, normTomorrow: $("normTomorrow").checked,
+    dead: +$("dead").value / 100, extreme: +$("extreme").value / 100, levels: +$("levels").value, ticks: $("ticks").checked
+  };
+  $("histDaysOut").textContent = S.P.histDays + (S.P.histDays === 1 ? " day" : " days");
+  $("deadOut").textContent = "±" + $("dead").value + " öre";
+  $("extremeOut").textContent = "±" + $("extreme").value + " öre";
+  $("histHelp").textContent = hist.length ? "The average of these days plus today and, if ticked below, tomorrow." : "Pasted prices have no history, so the normal price is based on today and tomorrow only.";
+  $("propBlock").classList.toggle("hidden", !S.P.show);
+  $("propDesc").textContent = "normal price " + S.P.histDays + (S.P.histDays === 1 ? " day" : " days") + " back, yellow within ±" + $("dead").value + " öre";
+  const sw = (lv, txt) => { const [r, g, b] = propBase(lv, S.P.levels); return `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:rgb(${r},${g},${b})"></span>${txt}</span>`; };
+  const keyHtml = S.P.levels === 5
+    ? sw(-2, "very cheap") + sw(-1, "cheap") + sw(0, "doesn't matter") + sw(1, "expensive") + sw(2, "very expensive")
+    : sw(-1, "cheap") + sw(0, "doesn't matter") + sw(1, "expensive");
+  if ($("propKey").innerHTML !== keyHtml) { $("propKey").innerHTML = keyHtml; $("propKey").style.flexWrap = "wrap"; $("propKey").style.fontFamily = "var(--body)"; }
+  $("ledsOut").textContent = S.N;
+  $("pastOut").textContent = S.pastPct + " %";
+  $("bdayOut").textContent = S.bday;
+  $("bnightOut").textContent = S.bnight;
+  $("minspanOut").textContent = $("minspan").value + " öre";
+  $("gammaOut").textContent = S.V.gamma.toFixed(1);
+  $("brightBox").classList.toggle("hidden", !S.applyBright);
+  $("minspanBox").classList.toggle("hidden", S.V.scale !== "minspan");
+  $("absBox").classList.toggle("hidden", S.V.scale !== "absolute");
+  $("variantBlock").classList.toggle("hidden", !S.showVar);
+  $("time").disabled = S.live;
+  $("varDesc").textContent = describe(S.V);
+}
+const ORIGINAL = { scale: "relative", basis: "window", win: "orig", agg: "mean", gamma: 1, steps: 0, palette: "orig", minspan: 0.5, absLo: 0.3, absHi: 2 };
+function describe(V) {
+  const p = [];
+  p.push({ relative: "relative scale", minspan: "minimum span " + Math.round(V.minspan * 100) + " öre", rank: "ranking", absolute: "fixed " + Math.round(V.absLo * 100) + "–" + Math.round(V.absHi * 100) + " öre" }[V.scale]);
+  if (V.basis === "remaining") p.push("only the time that is left");
+  if (V.win === "rolling") p.push("from now on");
+  if (V.agg !== "mean") p.push(V.agg === "max" ? "most expensive quarter per LED" : "cheapest quarter per LED");
+  if (V.gamma !== 1) p.push("curve " + V.gamma.toFixed(1));
+  if (V.steps) p.push(V.steps + " levels");
+  if (V.palette !== "orig") p.push(V.palette === "gyr" ? "green, yellow, red" : "blue to red");
+  return p.join(", ");
+}
+
+/* ---------- Cheapest to most expensive (and its variants) ---------- */
+function paint(r, V) {
+  if (V.palette === "bluered") return rainbow(Math.floor((1 - r) * 160));
+  if (V.palette === "gyr") {
+    const a = [0, 255, 0], m = [255, 200, 0], z = [255, 0, 0];
+    const [p, q, t] = r < 0.5 ? [a, m, r * 2] : [m, z, (r - 0.5) * 2];
+    return p.map((v, i) => Math.round(v + (q[i] - v) * t));
+  }
+  return rainbow(Math.floor((1 - r) * 96));   // as in rebuildTimeline: hue = (1 - ratio) * 96
+}
+function compute(V, all, cur, N) {
+  const L = all.length;
+  let start = 0, len = L;
+  if (V.win === "rolling") { start = Math.min(cur, L - 1); len = L - start; }
+  const win = all.slice(start, start + len);
+  const base = V.basis === "remaining" ? win.slice(Math.max(0, Math.min(cur - start, len - 1))) : win;
+  let mn = Infinity, mx = -Infinity;
+  for (const p of base) { if (p < mn) mn = p; if (p > mx) mx = p; }
+  const sorted = V.scale === "rank" ? [...base].sort((a, b) => a - b) : null;
+  const ratioOf = p => {
+    let r;
+    switch (V.scale) {
+      case "minspan": r = (p - mn) / Math.max(mx - mn, V.minspan); break;
+      case "absolute": r = V.absHi > V.absLo ? (p - V.absLo) / (V.absHi - V.absLo) : 0.5; break;
+      case "rank": {
+        const n = sorted.length; if (n < 2) { r = 0.5; break; }
+        let lo = 0; while (lo < n && sorted[lo] < p) lo++;
+        let hi = lo; while (hi < n && sorted[hi] === p) hi++;
+        r = (lo + Math.max(0, hi - lo - 1) / 2) / (n - 1); break;
+      }
+      default: r = mx > mn ? (p - mn) / (mx - mn) : 0.5;
+    }
+    r = Math.min(1, Math.max(0, r));
+    if (V.gamma !== 1) r = Math.pow(r, V.gamma);
+    if (V.steps > 1) r = Math.round(r * (V.steps - 1)) / (V.steps - 1);
+    return r;
+  };
+  const colorOf = p => paint(ratioOf(p), V);
+  const leds = [];
+  let prev = [0, 0, 0];
+  for (let i = 0; i < N; i++) {
+    let s0 = Math.floor(i * len / N), s1 = Math.floor((i + 1) * len / N);
+    if (s1 <= s0) s1 = s0 + 1;
+    const vals = win.slice(s0, Math.min(s1, len));
+    if (!vals.length) { leds.push({ rgb: prev, s0, s1, price: null }); continue; }
+    const price = V.agg === "max" ? Math.max(...vals) : V.agg === "min" ? Math.min(...vals) : vals.reduce((a, b) => a + b, 0) / vals.length;
+    const rgb = colorOf(price);
+    leds.push({ rgb, s0, s1, price });
+    prev = rgb;
+  }
+  let lgLo, lgHi;
+  if (V.scale === "rank") { lgLo = "cheapest"; lgHi = "most expensive"; }
+  else if (V.scale === "absolute") { lgLo = ore(V.absLo); lgHi = ore(V.absHi); }
+  else if (V.scale === "minspan") { lgLo = ore(mn); lgHi = ore(mn + Math.max(mx - mn, V.minspan)); }
+  else { lgLo = ore(mn); lgHi = ore(mx); }
+  return { V, start, len, mn, mx, leds, colorOf, curRel: cur - start, lgLo, lgHi };
+}
+const ledState = (s0, s1, cur) => cur >= s1 ? PAST : cur >= s0 ? NOW : FUTURE;
+
+/* ---------- Compared with a normal price ---------- */
+const levelName = lv => LEVEL_NAME[S.P.levels === 3 ? Math.max(-1, Math.min(1, lv)) : lv];
+const LEVEL_NAME = { "-2": "very cheap", "-1": "cheap", "0": "doesn't matter", "1": "expensive", "2": "very expensive" };
+// Color per level, along the same color wheel as the other mode (levelHue() in elpris_logic.h)
+function propBase(level, levels) {
+  if (levels === 3) return rainbow([96, 64, 0][Math.max(-1, Math.min(1, level)) + 1]);
+  return rainbow([96, 80, 64, 32, 0][level + 2]);
+}
+function computeProposal(minute, tmr, N, P) {
+  const cur = Math.floor(minute / 15);
+  const pool = [];
+  const hd = Math.min(P.histDays, hist.length);
+  for (let k = hist.length - hd; k < hist.length; k++) pool.push(...hist[k]);
+  pool.push(...days[0]);
+  if (tmr && P.normTomorrow) pool.push(...days[1]);
+  const normal = pool.reduce((a, b) => a + b, 0) / pool.length;
+  const levelOfDiff = d => d >= P.extreme ? 2 : d <= -P.extreme ? -2 : d >= P.dead ? 1 : d <= -P.dead ? -1 : 0;
+  const levelOf = p => p <= 0 ? -2 : levelOfDiff(p - normal);
+  const mean = a => a.reduce((x, y) => x + y, 0) / a.length;
+  // Today from midnight to midnight on all LEDs except the last three
+  const M = Math.max(1, N - 3), L = 96, FAR = 1e9;
+  const leds = [];
+  for (let i = 0; i < M; i++) {
+    let s0 = Math.floor(i * L / M), s1 = Math.floor((i + 1) * L / M);
+    if (s1 <= s0) s1 = s0 + 1;
+    const tick = P.ticks && [24, 48, 72].some(t => t >= s0 && t < s1);
+    const price = mean(days[0].slice(s0, s1));
+    leds.push({ s0, s1, price, level: levelOf(price), tick });
+  }
+  // One off LED, then tomorrow day and tomorrow evening compared with the same hours today
+  leds.push({ s0: FAR, s1: FAR + 1, off: true, info: "Off LED before tomorrow" });
+  const periods = [];
+  for (const [name, a, b] of [["day", 32, 68], ["evening", 68, 96]]) {
+    const td = mean(days[0].slice(a, b));
+    const tm = tmr ? mean(days[1].slice(a, b)) : null;
+    const level = tmr ? levelOfDiff(tm - td) : null;
+    periods.push({ name, a, b, td, tm, level });
+    const span = pad(a / 4) + "–" + pad(b / 4);
+    const info = tmr
+      ? `Tomorrow ${name} ${span}: ${ore(tm)}\nToday ${span}: ${ore(td)}\n${(tm - td >= 0 ? "+" : "") + Math.round((tm - td) * 100)} öre, ${cmpName(level)}`
+      : `Tomorrow ${name} ${span}\nThe prices are not published yet`;
+    leds.push({ s0: FAR, s1: FAR + 1, off: !tmr, cmp: true, level, info });
+  }
+  return {
+    kind: "prop", V: { scale: "prop" }, start: 0, len: L, frac: M / N, endLabel: "day · evening tomorrow",
+    curRel: cur, leds, normal, hd, P, periods, colorOf: p => propBase(levelOf(p), P.levels)
+  };
+}
+const CMP_NAME = { "-2": "much cheaper", "-1": "cheaper", "0": "about the same as today", "1": "more expensive", "2": "much more expensive" };
+const cmpName = lv => CMP_NAME[S.P.levels === 3 ? Math.max(-1, Math.min(1, lv)) : lv];
+function shadeProp(led, t, night, curRel) {
+  if (led.off) return [0, 0, 0];
+  const st = ledState(led.s0, led.s1, curRel);
+  if (led.tick) return shade([scale8(190, 60), scale8(205, 60), scale8(255, 60)], st === NOW ? NOW : FUTURE, t, night);
+  return shade(propBase(led.level, S.P.levels), st, t, night);
+}
+const shadePlain = (led, t, night, curRel) => shade(led.rgb, ledState(led.s0, led.s1, curRel), t, night);
+
+/* ---------- Helpers ---------- */
+const ore = p => Math.round(p * 100) + " öre";
+const pad = n => String(n).padStart(2, "0");
+function fmtMin(m, isEnd) {
+  const d = Math.floor(m / 1440), r = m % 1440;
+  if (isEnd && r === 0 && d > 0) return "24:00" + (d > 1 ? " tomorrow" : "");
+  return pad(Math.floor(r / 60)) + ":" + pad(r % 60) + (d > 0 ? " tomorrow" : "");
+}
+function fitCanvas(c) {
+  const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+  if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [ctx, w, h];
+}
+
+/* ---------- Drawing ---------- */
+function shade(rgb, state, t, night) {
+  let [r, g, b] = rgb;
+  if (state === NOW) {
+    if (S.pulseWhite) { const a = beatsin8(t, 0, 220); r += ((255 - r) * a) >> 8; g += ((255 - g) * a) >> 8; b += ((255 - b) * a) >> 8; }
+    else { const a = beatsin8(t, 30, 255); r = scale8(r, a); g = scale8(g, a); b = scale8(b, a); }
+  } else if (state === PAST && S.pastPct < 100) {
+    const sc = Math.floor((S.pastPct * 255 + 50) / 100); r = scale8(r, sc); g = scale8(g, sc); b = scale8(b, sc);
+  }
+  if (S.applyBright) { const bb = night ? S.bnight : S.bday; r = scale8(r, bb); g = scale8(g, bb); b = scale8(b, bb); }
+  if (S.perceptual) { r = Math.round(255 * srgb(r / 255)); g = Math.round(255 * srgb(g / 255)); b = Math.round(255 * srgb(b / 255)); }
+  return [r, g, b];
+}
+function drawStrip(canvas, res, t, night, shadeFn) {
+  const [ctx, w, h] = fitCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  const N = res.leds.length, top = 8, sh = 40, pitch = w / N;
+  ctx.fillStyle = "#07090c"; ctx.strokeStyle = "#2b3340"; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(0.5, top + 0.5, w - 1, sh, 6); ctx.fill(); ctx.stroke();
+  const rad = Math.max(1.2, Math.min(pitch * 0.36, 9));
+  const chip = Math.max(2, Math.min(pitch * 0.7, 16));
+  for (let j = 0; j < N; j++) {
+    const i = S.reverse ? N - 1 - j : j, led = res.leds[i];
+    const cx = (j + 0.5) * pitch, cy = top + sh / 2;
+    ctx.fillStyle = "#151a20"; ctx.fillRect(cx - chip / 2, cy - chip / 2, chip, chip);
+    const [r, g, b] = shadeFn(led, t, night, res.curRel);
+    if (r + g + b === 0) continue;
+    ctx.save();
+    ctx.shadowColor = `rgb(${r},${g},${b})`; ctx.shadowBlur = Math.min(18, pitch * 2.2);
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  ctx.font = "11px 'IBM Plex Mono', monospace"; ctx.fillStyle = "#8a93a3"; ctx.textBaseline = "top";
+  const startTxt = fmtMin(res.start * 15), endTxt = fmtMin((res.start + res.len) * 15, true);
+  const lastTxt = res.endLabel || endTxt;
+  const leftTxt = S.reverse ? lastTxt : startTxt, rightTxt = S.reverse ? startTxt : lastTxt;
+  ctx.textAlign = "left"; ctx.fillText("DIN ▸ " + leftTxt, 2, top + sh + 6);
+  ctx.textAlign = "right"; ctx.fillText(rightTxt, w - 2, top + sh + 6);
+  // Clock times every six hours under the strip, so it is easy to see where in the day each part is
+  ctx.textAlign = "center"; ctx.strokeStyle = "#4a5466"; ctx.lineWidth = 1;
+  for (let k = 1; k < res.len; k++) {
+    const abs = res.start + k;
+    if (abs % 24 !== 0) continue;
+    const xt = k / res.len * w * (res.frac || 1), x = S.reverse ? w - xt : xt;
+    if (x < 70 || x > w - 70) continue;
+    ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, top + sh + 1); ctx.lineTo(Math.round(x) + 0.5, top + sh + 5); ctx.stroke();
+    ctx.fillText(abs % 96 === 0 ? "00" : pad((abs % 96) / 4), x, top + sh + 6);
+  }
+}
+function drawLegend(canvas, res) {
+  const ctx = canvas.getContext("2d"), w = canvas.width, h = canvas.height;
+  for (let x = 0; x < w; x++) {
+    const r = x / (w - 1);
+    const q = res.V.steps > 1 ? Math.round(Math.pow(r, 1) * (res.V.steps - 1)) / (res.V.steps - 1) : r;
+    const [cr, cg, cb] = paint(q, res.V);
+    ctx.fillStyle = `rgb(${cr},${cg},${cb})`; ctx.fillRect(x, 0, 1, h);
+  }
+}
+function drawChart(all, res, minute) {
+  const [ctx, w, h] = fitCanvas($("chart"));
+  ctx.clearRect(0, 0, w, h);
+  const L = all.length, padL = 58, padR = 10, padT = 20, padB = 26;
+  const cw = w - padL - padR, ch = h - padT - padB, bw = cw / L;
+  let lo = Math.min(0, ...all), hi = Math.max(...all);
+  if (res.V.scale === "absolute") hi = Math.max(hi, res.V.absHi);
+  const steps = [5, 10, 20, 25, 50, 100, 200, 500];
+  let step = steps.find(s => ((hi - lo) * 100) / s <= 6) || 1000;
+  lo = Math.floor(lo * 100 / step) * step / 100; hi = Math.ceil(hi * 100 / step) * step / 100;
+  if (hi <= lo) hi = lo + step / 100;
+  const y = p => padT + ch - (p - lo) / (hi - lo) * ch;
+  ctx.font = "11px 'IBM Plex Mono', monospace"; ctx.textBaseline = "middle"; ctx.textAlign = "right";
+  for (let v = Math.round(lo * 100); v <= Math.round(hi * 100) + 0.01; v += step) {
+    const yy = y(v / 100);
+    ctx.strokeStyle = v === 0 ? "#4a5466" : "#1f2630"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padL, Math.round(yy) + 0.5); ctx.lineTo(w - padR, Math.round(yy) + 0.5); ctx.stroke();
+    ctx.fillStyle = "#8a93a3"; ctx.fillText(v + " öre", padL - 6, yy);
+  }
+  const cur = Math.floor(minute / 15);
+  for (let s = 0; s < L; s++) {
+    const p = all[s], x = padL + s * bw;
+    const inWin = s >= res.start && s < res.start + res.len;
+    const [r, g, b] = inWin ? res.colorOf(p) : [90, 98, 110];
+    ctx.globalAlpha = s < cur ? 0.35 : 1;
+    ctx.fillStyle = `rgb(${r},${g},${b})`;
+    const y0 = y(Math.max(0, lo)), y1 = y(p);
+    ctx.fillRect(x + 0.5, Math.min(y0, y1), Math.max(1, bw - 1), Math.max(1, Math.abs(y1 - y0)));
+  }
+  ctx.globalAlpha = 1;
+  const dashed = (p, label, right) => {
+    if (p < lo || p > hi) return;
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = "#c9ced6"; ctx.beginPath(); ctx.moveTo(padL, y(p)); ctx.lineTo(w - padR, y(p)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.textAlign = right ? "right" : "left"; ctx.fillStyle = "#c9ced6"; ctx.fillText(label, right ? w - padR - 4 : padL + 4, y(p) - 8);
+  };
+  if (res.V.scale === "absolute") { dashed(res.V.absLo, "green below " + ore(res.V.absLo)); dashed(res.V.absHi, "red above " + ore(res.V.absHi)); }
+  if (res.V.scale === "minspan" && res.mx - res.mn < res.V.minspan) dashed(res.mn + res.V.minspan, "this is where it would have turned red");
+  if (res.kind === "prop") {
+    const a = Math.min(hi, res.normal + res.P.dead), b = Math.max(lo, res.normal - res.P.dead);
+    ctx.fillStyle = "rgba(230,220,90,0.10)"; ctx.fillRect(padL, y(a), cw, y(b) - y(a));
+    dashed(res.normal, "normal price " + ore(res.normal) + ", yellow within ±" + Math.round(res.P.dead * 100) + " öre", true);
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
+    for (const q of res.periods) {
+      for (const [off, v] of [[0, q.td], [96, q.tm]]) {
+        if (v == null || off + q.b > L) continue;
+        const yy = y(v), x0 = padL + (off + q.a) * bw, x1 = padL + (off + q.b) * bw;
+        ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke();
+        ctx.fillStyle = "#ffffff"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
+        ctx.fillText("avg " + ore(v), x0 + 2, yy - 2);
+      }
+    }
+    ctx.lineWidth = 1;
+  }
+  ctx.textBaseline = "top"; ctx.textAlign = "center"; ctx.fillStyle = "#8a93a3";
+  for (let s = 0; s <= L; s += 24) {
+    const x = padL + s * bw, hh = (s / 4) % 24;
+    ctx.fillText(s === 96 && L > 96 ? "00 tomorrow" : pad(s === L ? 24 : hh), Math.min(Math.max(x, padL + 10), w - padR - 14), h - padB + 7);
+  }
+  if (L > 96) { ctx.strokeStyle = "#5a6577"; ctx.beginPath(); ctx.moveTo(padL + 96 * bw + 0.5, padT); ctx.lineTo(padL + 96 * bw + 0.5, padT + ch); ctx.stroke(); }
+  const nx = padL + (minute / 15) * bw;
+  ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(nx, padT - 4); ctx.lineTo(nx, padT + ch); ctx.stroke();
+  ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText("now", nx, padT + 1);
+  chartGeom = { padL, bw, L };
+}
+
+/* ---------- Main loop ---------- */
+let playing = false, lastT = performance.now(), chartGeom = null, last = {};
+function state() {
+  const minute = Math.floor(S.minute);
+  const tmr = days[1] && (S.tomorrow === "always" || (S.tomorrow === "auto" && minute >= 13 * 60 + 30));
+  const all = tmr ? days[0].concat(days[1]) : days[0].slice();
+  const cur = Math.floor(minute / 15);
+  return {
+    minute, all, cur, tmr, orig: compute(ORIGINAL, all, cur, S.N), vari: compute(S.V, all, cur, S.N),
+    prop: computeProposal(minute, tmr, S.N, S.P)
+  };
+}
+function readout(st) {
+  const p = st.all[st.cur], o = st.orig;
+  const nowLed = o.leds.findIndex(l => ledState(l.s0, l.s1, o.curRel) === NOW);
+  const phys = S.reverse ? S.N - 1 - nowLed : nowLed;
+  const per = (o.len / S.N);
+  const night = isNightHour(Math.floor(st.minute / 60), S.nstart, S.nend);
+  const tiles = [
+    ["Clock", fmtMin(st.minute) + (S.applyBright && night ? " night" : "")],
+    ["Price now", ore(p)],
+    ["Cheapest–most expensive in window", ore(o.mn) + " – " + ore(o.mx)],
+    ["Window (cheapest to most expensive)", o.len + " quarters" + (o.len > 96 ? " (two days)" : " (today)")],
+    ["Quarters per LED", per.toFixed(2)],
+    ["Current LED, physical position", "no. " + (phys + 1) + " of " + S.N]
+  ];
+  if (S.P.show) {
+    const lv = st.prop.leds.find(l => !l.off && !l.cmp && ledState(l.s0, l.s1, st.prop.curRel) === NOW);
+    const pr = st.prop.periods.map(q => q.tm == null ? "–" : cmpName(q.level));
+    tiles.splice(2, 0, ["Normal price", ore(st.prop.normal)], ["Right now", lv ? levelName(lv.level) : "–"],
+      ["Tomorrow day 08–17", pr[0]], ["Tomorrow evening 17–24", pr[1]]);
+  }
+  const html = tiles.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+  if (html !== last.readout) { $("readout").innerHTML = html; last.readout = html; }
+}
+function frame(t) {
+  const dt = (t - lastT) / 1000; lastT = t;
+  if (S.live) {
+    const d = new Date(); S.minute = d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60;
+    $("time").value = Math.floor(S.minute);
+  } else if (playing) {
+    S.minute = (S.minute + dt * S.speed) % 1440;
+    $("time").value = Math.floor(S.minute);
+  }
+  $("timeOut").textContent = fmtMin(Math.floor(S.minute));
+  const st = state();
+  const night = isNightHour(Math.floor(st.minute / 60), S.nstart, S.nend);
+  drawStrip($("stripOrig"), st.orig, t, night, shadePlain);
+  if (S.P.show) drawStrip($("stripProp"), st.prop, t, night, shadeProp);
+  if (S.showVar) drawStrip($("stripVar"), st.vari, t, night, shadePlain);
+  const key = JSON.stringify([S.V, st.cur, st.all.length, S.N, seed, $("scenario").value]);
+  if (key !== last.legend) {
+    drawLegend($("lgOrig"), st.orig); drawLegend($("lgVar"), st.vari);
+    $("lgOrigLo").textContent = st.orig.lgLo; $("lgOrigHi").textContent = st.orig.lgHi;
+    $("lgVarLo").textContent = st.vari.lgLo; $("lgVarHi").textContent = st.vari.lgHi;
+    last.legend = key;
+  }
+  drawChart(st.all, S.P.show ? st.prop : S.showVar ? st.vari : st.orig, S.minute);
+  readout(st);
+  last.st = st;
+  requestAnimationFrame(frame);
+}
+
+/* ---------- Mouse pointer ---------- */
+const tip = $("tip");
+function showTip(e, text) { tip.textContent = text; tip.style.display = "block"; tip.style.left = (e.clientX + 14) + "px"; tip.style.top = (e.clientY + 14) + "px"; }
+function hideTip() { tip.style.display = "none"; }
+function stripHover(canvas, which) {
+  canvas.addEventListener("mousemove", e => {
+    const st = last.st; if (!st) return;
+    const res = st[which], N = res.leds.length, rect = canvas.getBoundingClientRect();
+    const j = Math.min(N - 1, Math.max(0, Math.floor((e.clientX - rect.left) / rect.width * N)));
+    const i = S.reverse ? N - 1 - j : j, led = res.leds[i];
+    const a = (res.start + led.s0) * 15, b = (res.start + led.s1) * 15;
+    if (led.info) { showTip(e, `LED ${j + 1} (physical)\n` + led.info); return; }
+    const extra = led.tick ? "\nclock time marker" : (led.level != null ? "\n" + levelName(led.level) : "");
+    showTip(e, `LED ${j + 1} (physical)\n${fmtMin(a)} – ${fmtMin(b, true)}\n${led.s1 - led.s0} quarter${led.s1 - led.s0 > 1 ? "s" : ""}, ${led.price == null ? "no price yet" : ore(led.price)}${extra}`);
+  });
+  canvas.addEventListener("mouseleave", hideTip);
+}
+stripHover($("stripProp"), "prop");
+stripHover($("stripOrig"), "orig");
+stripHover($("stripVar"), "vari");
+$("chart").addEventListener("mousemove", e => {
+  const st = last.st; if (!st || !chartGeom) return;
+  const rect = $("chart").getBoundingClientRect();
+  const s = Math.floor((e.clientX - rect.left - chartGeom.padL) / chartGeom.bw);
+  if (s < 0 || s >= chartGeom.L) { hideTip(); return; }
+  const oi = st.orig.leds.findIndex(l => s >= l.s0 && s < l.s1);
+  const phys = S.reverse ? S.N - 1 - oi : oi;
+  showTip(e, `${fmtMin(s * 15)} – ${fmtMin((s + 1) * 15, true)}\n${ore(st.all[s])} (${st.all[s].toFixed(3)} SEK/kWh)\nshown on LED ${phys + 1} (cheapest to most expensive)`);
+});
+$("chart").addEventListener("mouseleave", hideTip);
+
+/* ---------- Pasted prices ---------- */
+function parseDay(text) {
+  const arr = JSON.parse(text);
+  if (!Array.isArray(arr) || !arr.length) throw new Error("What was pasted is not a list of prices.");
+  const out = new Array(SLOTS).fill(null);
+  for (const e of arr) {
+    const m = /T(\d\d):(\d\d)/.exec(e.time_start || "");
+    if (!m || typeof e.SEK_per_kWh !== "number") continue;
+    const s = (+m[1]) * 4 + Math.floor((+m[2]) / 15);
+    let dur = 4;
+    const a = Date.parse(e.time_start), b = Date.parse(e.time_end);
+    if (isFinite(a) && isFinite(b) && b > a) dur = Math.max(1, Math.round((b - a) / 900000));
+    for (let k = 0; k < dur && s + k < SLOTS; k++) out[s + k] = e.SEK_per_kWh;
+  }
+  const first = out.find(v => v !== null);
+  if (first === undefined) throw new Error("Found no fields with SEK_per_kWh and time_start.");
+  let prev = first;
+  for (let i = 0; i < SLOTS; i++) { if (out[i] === null) out[i] = prev; prev = out[i]; }
+  return out;
+}
+function updateUrls() {
+  const d = $("pDate").value ? new Date($("pDate").value + "T12:00:00") : new Date();
+  const mk = dd => `https://www.elprisetjustnu.se/api/v1/prices/${dd.getFullYear()}/${pad(dd.getMonth() + 1)}-${pad(dd.getDate())}_${$("pArea").value}.json`;
+  const t = new Date(d); t.setDate(t.getDate() + 1);
+  $("urlToday").href = $("urlToday").textContent = mk(d);
+  $("urlTomorrow").href = $("urlTomorrow").textContent = mk(t);
+}
+$("usePasted").addEventListener("click", () => {
+  const msg = $("pasteMsg");
+  try {
+    const a = parseDay($("jsonToday").value.trim());
+    const b = $("jsonTomorrow").value.trim() ? parseDay($("jsonTomorrow").value.trim()) : null;
+    pasted = [a, b];
+    const opt = $("scenario").querySelector('option[value="pasted"]'); opt.disabled = false;
+    $("scenario").value = "pasted"; regen(); readS();
+    msg.className = "msg ok"; msg.textContent = "The prices are now used" + (b ? " for today and tomorrow." : " for today. Tomorrow is missing.");
+  } catch (err) {
+    msg.className = "msg err"; msg.textContent = "Could not read the prices: " + err.message + " Copy the whole page from the address, from [ to ].";
+  }
+});
+
+/* ---------- Wiring ---------- */
+document.querySelectorAll("input, select").forEach(el => el.addEventListener("input", () => { readS(); }));
+$("scenario").addEventListener("change", () => { regen(); readS(); });
+$("reseed").addEventListener("click", () => {
+  if ($("scenario").value === "pasted") $("scenario").value = "winter";
+  seed++; regen(); readS();
+});
+$("play").addEventListener("click", () => {
+  playing = !playing; $("play").textContent = playing ? "Pause" : "Play";
+  if (playing && $("live").checked) { $("live").checked = false; readS(); }
+});
+$("time").addEventListener("input", () => { S.minute = +$("time").value; });
+$("live").addEventListener("change", () => { if ($("live").checked && playing) { playing = false; $("play").textContent = "Play"; } });
+$("resetVar").addEventListener("click", () => {
+  $("scale").value = "relative"; $("basis").value = "window"; $("win").value = "orig"; $("agg").value = "mean";
+  $("gamma").value = 1; $("steps").value = 0; $("palette").value = "orig"; readS();
+});
+$("pDate").addEventListener("input", updateUrls);
+$("pArea").addEventListener("input", updateUrls);
+
+(function init() {
+  const d = new Date();
+  $("pDate").value = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  updateUrls(); regen(); readS();
+  requestAnimationFrame(t => { lastT = t; frame(t); });
+})();
+</script>
+</body>
+</html>

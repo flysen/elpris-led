@@ -1,4 +1,5 @@
 // Tests for elpris_led/elpris_logic.h that run on a regular computer: make test
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,6 +15,11 @@ static void check(const char* name, long long actual, long long expected) {
 }
 
 static void checkTrue(const char* name, bool cond) { check(name, cond ? 1 : 0, 1); }
+
+static void checkNear(const char* name, double actual, double expected) {
+  if (fabs(actual - expected) < 1e-6) { passed++; printf("OK   %s\n", name); }
+  else { failed++; printf("FAIL %s: got %f, expected %f\n", name, actual, expected); }
+}
 
 static time_t utc(int Y, int M, int D, int h, int m) {
   struct tm t = {};
@@ -75,6 +81,32 @@ static void testDayLengths() {
   time_t dayBefore = utc(2026, 3, 28, 11, 0);
   check("48 h window across the DST change: 188 slots",
         localMidnightSlot(dayBefore, 2) - localMidnightSlot(dayBefore, 0), 188);
+}
+
+// Local hours used for tomorrow's periods, in Swedish time, including the DST change days
+static void testLocalHourSlot() {
+  time_t winter = utc(2026, 11, 13, 12, 0);
+  check("localHourSlot: 08:00 in winter is 07:00 UTC", localHourSlot(winter, 0, 8), utc(2026, 11, 13, 7, 0) / SLOT_SEC);
+  check("localHourSlot: tomorrow 17:00 in winter is 16:00 UTC", localHourSlot(winter, 1, 17), utc(2026, 11, 14, 16, 0) / SLOT_SEC);
+  check("localHourSlot: hour 24 is the next midnight", localHourSlot(winter, 0, 24), localMidnightSlot(winter, 1));
+  check("localHourSlot: hour 0 is the same as localMidnightSlot", localHourSlot(winter, 1, 0), localMidnightSlot(winter, 1));
+
+  time_t summer = utc(2026, 7, 15, 12, 0);
+  check("localHourSlot: 08:00 in summer is 06:00 UTC", localHourSlot(summer, 0, 8), utc(2026, 7, 15, 6, 0) / SLOT_SEC);
+
+  time_t spring = utc(2026, 3, 29, 12, 0);   // clocks go forward 02:00 -> 03:00
+  check("2026-03-29: 00-08 is 7 hours (28 slots)", localHourSlot(spring, 0, 8) - localHourSlot(spring, 0, 0), 28);
+  check("2026-03-29: 08-17 is 9 hours (36 slots)", localHourSlot(spring, 0, 17) - localHourSlot(spring, 0, 8), 36);
+  check("2026-03-29: 17-24 is 7 hours (28 slots)", localHourSlot(spring, 0, 24) - localHourSlot(spring, 0, 17), 28);
+
+  time_t autumn = utc(2026, 10, 25, 12, 0);  // clocks go back 03:00 -> 02:00
+  check("2026-10-25: 00-08 is 9 hours (36 slots)", localHourSlot(autumn, 0, 8) - localHourSlot(autumn, 0, 0), 36);
+  check("2026-10-25: 08-17 is 9 hours (36 slots)", localHourSlot(autumn, 0, 17) - localHourSlot(autumn, 0, 8), 36);
+
+  // The day before a DST change: tomorrow's periods are counted in tomorrow's local time
+  time_t dayBefore = utc(2026, 3, 28, 12, 0);
+  check("tomorrow 08-17 across the DST change is 36 slots", localHourSlot(dayBefore, 1, 17) - localHourSlot(dayBefore, 1, 8), 36);
+  check("tomorrow 08:00 across the DST change is 06:00 UTC", localHourSlot(dayBefore, 1, 8), utc(2026, 3, 29, 6, 0) / SLOT_SEC);
 }
 
 // Every time zone in the web UI's list: local midnight at the right UTC time in winter and summer,
@@ -242,6 +274,125 @@ static void testInitialPastPercent() {
   check("initialPastPercent: a saved value wins over old dimming off", initialPastPercent(true, 50, false, 10), 50);
 }
 
+// ---------- Normal-price color mode ----------
+
+static void testPriceSum() {
+  PriceSum empty;
+  checkTrue("PriceSum: a new sum is empty", empty.empty());
+  checkNear("PriceSum: an empty sum has mean 0", empty.mean(), 0.0);
+
+  PriceSum s;
+  s.add(1.0f, 4);          // an hourly price covers four quarters
+  s.add(3.0f);
+  check("PriceSum: counts quarters", s.count, 5);
+  checkNear("PriceSum: mean is weighted per quarter", s.mean(), 7.0 / 5.0);
+
+  PriceSum day1, day2, all;
+  for (int i = 0; i < 96; i++) day1.add(0.50f);
+  for (int i = 0; i < 92; i++) day2.add(1.50f);   // a 23-hour day has fewer quarters
+  all.add(day1);
+  all.add(day2);
+  check("PriceSum: adding sums adds their quarters", all.count, 188);
+  checkNear("PriceSum: mean over days weighs each quarter equally", all.mean(), (96 * 0.5 + 92 * 1.5) / 188.0);
+
+  PriceSum negative;
+  negative.add(-0.10f, 2);
+  negative.add(0.30f, 2);
+  checkNear("PriceSum: negative prices count in the mean", negative.mean(), 0.10);
+}
+
+static void testLevelForDiff() {
+  // Default limits from the proposal: +-20 öre doesn't matter, +-80 öre is "very"
+  check("levelForDiff: 0 öre is neutral", levelForDiff(0, 20, 80), LEVEL_NEUTRAL);
+  check("levelForDiff: +19.9 öre is still neutral", levelForDiff(19.9f, 20, 80), LEVEL_NEUTRAL);
+  check("levelForDiff: -19.9 öre is still neutral", levelForDiff(-19.9f, 20, 80), LEVEL_NEUTRAL);
+  check("levelForDiff: +20 öre is expensive", levelForDiff(20, 20, 80), LEVEL_EXPENSIVE);
+  check("levelForDiff: -20 öre is cheap", levelForDiff(-20, 20, 80), LEVEL_CHEAP);
+  check("levelForDiff: +79.9 öre is expensive", levelForDiff(79.9f, 20, 80), LEVEL_EXPENSIVE);
+  check("levelForDiff: -79.9 öre is cheap", levelForDiff(-79.9f, 20, 80), LEVEL_CHEAP);
+  check("levelForDiff: +80 öre is very expensive", levelForDiff(80, 20, 80), LEVEL_VERY_EXPENSIVE);
+  check("levelForDiff: -80 öre is very cheap", levelForDiff(-80, 20, 80), LEVEL_VERY_CHEAP);
+  check("levelForDiff: +500 öre is very expensive", levelForDiff(500, 20, 80), LEVEL_VERY_EXPENSIVE);
+  check("levelForDiff: other limits, +30 within +-50 is neutral", levelForDiff(30, 50, 150), LEVEL_NEUTRAL);
+  check("levelForDiff: other limits, +150 is very expensive", levelForDiff(150, 50, 150), LEVEL_VERY_EXPENSIVE);
+
+  // Levels never go down when the difference goes up
+  bool ok = true;
+  for (int d = -300; d < 300; d++) {
+    if (levelForDiff((float)d + 1, 20, 80) < levelForDiff((float)d, 20, 80)) ok = false;
+  }
+  checkTrue("levelForDiff: never decreases from -300 to +300 öre", ok);
+}
+
+static void testLevelForPrice() {
+  check("levelForPrice: normal price is neutral", levelForPrice(100, 100, 20, 80), LEVEL_NEUTRAL);
+  check("levelForPrice: 30 öre under normal is cheap", levelForPrice(70, 100, 20, 80), LEVEL_CHEAP);
+  check("levelForPrice: 100 öre over normal is very expensive", levelForPrice(200, 100, 20, 80), LEVEL_VERY_EXPENSIVE);
+  check("levelForPrice: zero price is very cheap", levelForPrice(0, 100, 20, 80), LEVEL_VERY_CHEAP);
+  check("levelForPrice: negative price is very cheap", levelForPrice(-5, 100, 20, 80), LEVEL_VERY_CHEAP);
+  check("levelForPrice: zero price is very cheap even when the normal price is low", levelForPrice(0, 5, 20, 80), LEVEL_VERY_CHEAP);
+  check("levelForPrice: positive price with a negative normal price can be expensive", levelForPrice(30, -10, 20, 80), LEVEL_EXPENSIVE);
+  check("levelForPrice: a 30-40 öre day around a 35 öre normal is neutral", levelForPrice(40, 35, 20, 80), LEVEL_NEUTRAL);
+}
+
+static void testLevelHue() {
+  check("levelHue 5 levels: very cheap is green (96)", levelHue(LEVEL_VERY_CHEAP, true), 96);
+  check("levelHue 5 levels: cheap is yellow-green (80)", levelHue(LEVEL_CHEAP, true), 80);
+  check("levelHue 5 levels: neutral is yellow (64)", levelHue(LEVEL_NEUTRAL, true), 64);
+  check("levelHue 5 levels: expensive is orange (32)", levelHue(LEVEL_EXPENSIVE, true), 32);
+  check("levelHue 5 levels: very expensive is red (0)", levelHue(LEVEL_VERY_EXPENSIVE, true), 0);
+  check("levelHue 3 levels: very cheap is green", levelHue(LEVEL_VERY_CHEAP, false), 96);
+  check("levelHue 3 levels: cheap is green", levelHue(LEVEL_CHEAP, false), 96);
+  check("levelHue 3 levels: neutral is yellow", levelHue(LEVEL_NEUTRAL, false), 64);
+  check("levelHue 3 levels: expensive is red", levelHue(LEVEL_EXPENSIVE, false), 0);
+  check("levelHue 3 levels: very expensive is red", levelHue(LEVEL_VERY_EXPENSIVE, false), 0);
+  check("levelHue: below very cheap is clamped", levelHue(-9, true), 96);
+  check("levelHue: above very expensive is clamped", levelHue(9, true), 0);
+}
+
+static void testTomorrowLeds() {
+  check("TOMORROW_PERIODS: two periods", TOMORROW_PERIOD_COUNT, 2);
+  check("TOMORROW_PERIODS: day starts 08", TOMORROW_PERIODS[0].startHour, 8);
+  check("TOMORROW_PERIODS: day ends 17", TOMORROW_PERIODS[0].endHour, 17);
+  check("TOMORROW_PERIODS: evening starts 17", TOMORROW_PERIODS[1].startHour, 17);
+  check("TOMORROW_PERIODS: evening ends 24", TOMORROW_PERIODS[1].endHour, 24);
+  bool ok = true;
+  for (int p = 0; p < TOMORROW_PERIOD_COUNT; p++) {
+    const HourPeriod& h = TOMORROW_PERIODS[p];
+    if (h.startHour < 0 || h.endHour > 24 || h.startHour >= h.endHour || !h.label[0]) ok = false;
+  }
+  checkTrue("TOMORROW_PERIODS: every period lies within the day and has a label", ok);
+  check("TOMORROW_LEDS: one off LED plus one per period", TOMORROW_LEDS, 3);
+
+  check("dayLedCount: normal-price mode, 100 LEDs leaves 97 for today", dayLedCount(100, true), 97);
+  check("dayLedCount: other color mode uses all 100", dayLedCount(100, false), 100);
+  check("dayLedCount: normal-price mode, 4 LEDs leaves 1 for today", dayLedCount(4, true), 1);
+  check("dayLedCount: normal-price mode, 3 LEDs is too short for tomorrow", dayLedCount(3, true), 3);
+  check("dayLedCount: normal-price mode, 1 LED", dayLedCount(1, true), 1);
+
+  // Today's LEDs still cover the whole day without gaps, on all day lengths
+  const int days[] = {92, 96, 100};
+  const int counts[] = {4, 53, 100, 300};
+  for (int w : days) {
+    for (int n : counts) {
+      int m = dayLedCount(n, true), end = 0;
+      bool ok2 = true;
+      for (int i = 0; i < m; i++) {
+        int s0, s1;
+        ledSlotRange(i, w, m, s0, s1);
+        if (s0 > end || s1 > w) ok2 = false;
+        if (s1 > end) end = s1;
+      }
+      if (end != w) ok2 = false;
+      char name[96];
+      snprintf(name, sizeof(name), "normal-price mode: %d LEDs cover a %d-slot day", n, w);
+      checkTrue(name, ok2);
+    }
+  }
+}
+
+// ---------- Other logic ----------
+
 static void testIsNightHour() {
   checkTrue("isNightHour 23-6: 23 is night", isNightHour(23, 23, 6));
   checkTrue("isNightHour 23-6: 0 is night", isNightHour(0, 23, 6));
@@ -297,6 +448,7 @@ static void testVersions() {
   checkTrue("isNewerVersion: v3.0 > v2.9.9", isNewerVersion("v3.0", "v2.9.9"));
   checkTrue("isNewerVersion: v3.0 > v2.5", isNewerVersion("v3.0", "v2.5"));
   checkTrue("isNewerVersion: v3.1 > v3.0", isNewerVersion("v3.1", "v3.0"));
+  checkTrue("isNewerVersion: v4.0 > v3.1", isNewerVersion("v4.0", "v3.1"));
   checkTrue("isNewerVersion: v2.0.1 > v2.0", isNewerVersion("v2.0.1", "v2.0"));
   checkTrue("isNewerVersion: 2.1 without v > v2.0", isNewerVersion("2.1", "v2.0"));
   checkTrue("isNewerVersion: same version is not newer", !isNewerVersion("v2.0", "v2.0"));
@@ -318,12 +470,18 @@ int main() {
   testParseIso();
   testPriceSlots();
   testDayLengths();
+  testLocalHourSlot();
   testTimeZones();
   testLedSlotRange();
   testLedTimeState();
   testPhysicalLed();
   testPercentToScale();
   testInitialPastPercent();
+  testPriceSum();
+  testLevelForDiff();
+  testLevelForPrice();
+  testLevelHue();
+  testTomorrowLeds();
   testIsNightHour();
   testBackoff();
   testValidArea();

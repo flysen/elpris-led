@@ -44,13 +44,14 @@
 
   .strip {
     display: grid;
-    grid-template-columns: repeat(48, 1fr);
+    grid-template-columns: repeat(51, 1fr);
     gap: clamp(1px, .6vw, 4px);
     padding: .55rem .9rem;
     background: var(--strip);
     border-radius: 999px;
   }
   .led { aspect-ratio: 1; border-radius: 50%; background: var(--c); box-shadow: 0 0 6px var(--c); }
+  .led.off { background: transparent; box-shadow: none; }
   .led.past { opacity: .3; box-shadow: none; }
   .led.now { animation: pulse 2s ease-in-out infinite; }
   @keyframes pulse { 50% { background: #fff; box-shadow: 0 0 10px #fff; } }
@@ -85,11 +86,11 @@
 <body>
 <main>
   <h1>Elpris-LED</h1>
-  <p class="lead">An LED strip that shows the day's electricity prices in color. Green when power is cheap, red when it's expensive.</p>
+  <p class="lead">An LED strip that shows the day's electricity prices in color. Green when it's a good time to use power, yellow when it doesn't matter, red when it's expensive.</p>
 
-  <div class="strip" id="strip" role="img" aria-label="Example of the strip: green at night and midday, red at the morning and evening peaks. Passed hours are dimmed and the current time pulses white."></div>
-  <div class="hours" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24</span></div>
-  <p class="caption">An example day. Passed hours are dimmed, and the LED pulsing white is right now.</p>
+  <div class="strip" id="strip" role="img" aria-label="Example of the strip: today compared with a normal price, yellow at night and midday, red at the morning and evening peaks. Passed hours are dimmed and the current time pulses white. The last two LEDs compare tomorrow with today."></div>
+  <div class="hours" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24 · tomorrow</span></div>
+  <p class="caption">An example day, compared with a normal price. Passed hours are dimmed and the LED pulsing white is right now. The last two LEDs show whether tomorrow daytime and evening will be cheaper (green) or more expensive (red) than today. Try it yourself in the <a href="emulator/">emulator</a>.</p>
 
   <section class="install">
     <h2>Install</h2>
@@ -120,13 +121,15 @@
   </section>
 
   <footer>
-    <p>Parts list, wiring diagram and source code are on <a href="https://github.com/flysen/elpris-led">GitHub</a>. Prices come from <a href="https://www.elprisetjustnu.se">elprisetjustnu.se</a>.</p>
+    <p>Parts list, wiring diagram and source code are on <a href="https://github.com/flysen/elpris-led">GitHub</a>. Prices come from <a href="https://www.elprisetjustnu.se">elprisetjustnu.se</a>. Try the color modes and settings in the <a href="emulator/">emulator</a>, by <a href="https://github.com/sealjo">@sealjo</a>.</p>
     <p id="version"></p>
   </footer>
 </main>
 
 <script>
-  // Example day: low at night, peaks in the morning and evening. Same color scale as the lamp.
+  // Example day: low at night, peaks in the morning and evening, compared with a normal price like the lamp's
+  // default color mode: yellow within ±20 öre, green/red beyond, \"very\" from ±80 öre. Then one off LED and
+  // two LEDs comparing tomorrow 08-17 and 17-24 with today (here tomorrow is a bit cheaper by day, dearer at night).
   const strip = document.getElementById('strip');
   const now = new Date();
   const nowIdx = now.getHours() * 2 + (now.getMinutes() >= 30 ? 1 : 0);
@@ -135,14 +138,19 @@
     const h = i / 2;
     prices.push(0.35 + 0.9 * Math.exp(-((h - 8) ** 2) / 4) + 1.1 * Math.exp(-((h - 18) ** 2) / 5) + 0.15 * Math.sin(h / 3));
   }
-  const mn = Math.min(...prices), mx = Math.max(...prices);
-  prices.forEach((p, i) => {
+  const normal = prices.reduce((a, b) => a + b, 0) / prices.length;
+  const HUE = { '-2': 120, '-1': 90, '0': 55, '1': 30, '2': 0 };   // green, yellow-green, yellow, orange, red
+  const level = d => d >= 0.8 ? 2 : d <= -0.8 ? -2 : d >= 0.2 ? 1 : d <= -0.2 ? -1 : 0;
+  const addLed = (cls, hue) => {
     const led = document.createElement('span');
-    led.className = 'led' + (i === nowIdx ? ' now' : i < nowIdx ? ' past' : '');
-    const hue = Math.round((1 - (p - mn) / (mx - mn)) * 120);
-    led.style.setProperty('--c', `hsl(${hue} 85% 52%)`);
+    led.className = 'led' + cls;
+    if (hue !== null) led.style.setProperty('--c', `hsl(${hue} 85% 52%)`);
     strip.appendChild(led);
-  });
+  };
+  prices.forEach((p, i) => addLed(i === nowIdx ? ' now' : i < nowIdx ? ' past' : '', HUE[p <= 0 ? -2 : level(p - normal)]));
+  addLed(' off', null);
+  addLed('', HUE[level(-0.3)]);   // tomorrow 08-17: cheaper than today
+  addLed('', HUE[level(0.25)]);   // tomorrow 17-24: more expensive than today
 
   fetch('manifest.json')
     .then(r => r.json())

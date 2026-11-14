@@ -11,6 +11,7 @@
 - [ ] Tests added or updated for new logic in `elpris_led/elpris_logic.h` (`make test`)
 - [ ] `README.md` updated (features, settings, setup steps, building)
 - [ ] Install page `docs/index.html` updated, if what it shows or explains changed
+- [ ] Emulator `docs/emulator/index.html` updated, if what the strip shows changed
 - [ ] Web UI help texts updated, if a setting was added or changed
 - [ ] `CHANGELOG.md`: a line under *Unreleased*, written for people who use the lamp
 - [ ] Settings from older versions still work after updating (no lamp loses its settings)

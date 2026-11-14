@@ -4,6 +4,11 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+## v4.0.1
+
+- The lamp now introduces itself as **Elpris-LED** when it fetches prices and checks for updates, and asks for JSON, instead of using the network library's anonymous default. Some sites block anonymous requests.
+- When the price server answers with something that isn't prices, the web page now shows what it sent: the content type and the first characters of the response.
+
 ## v4.0
 
 - **New default color mode: Compared with a normal price.** Today's prices are compared with the average of the last three days, today and tomorrow. Within ±20 öre of that the LED is yellow, because then it doesn't matter when you run the dishwasher; cheaper is green and more expensive is orange or red, with separate colors for "very" cheap and expensive. Idea and design by [@sealjo](https://github.com/sealjo).

@@ -8,7 +8,7 @@ What's new in each version: see [CHANGELOG.md](CHANGELOG.md). Try it without a l
 
 You don't need to compile anything. Every release is built and tested automatically for both ESP32 and ESP8266, and there are three ways to get it onto your board:
 
-1. **Install page (easiest):** open [flysen.github.io/elpris-led](https://flysen.github.io/elpris-led/) in Chrome or Edge on a computer, plug in the board with USB and click *Install on your board*. The page detects whether it's an ESP32 or an ESP8266 and installs the right firmware. Choose to erase the device on the first install.
+1. **Install page (easiest):** open [flysen.github.io/elpris-led](https://flysen.github.io/elpris-led/) in Chrome or Edge on a computer, plug in the board with USB and click *Install on your board*. The page detects whether it's an ESP32 or an ESP8266 and installs the right firmware. Choose to erase the device on the first install. Some ESP32 boards need a press on their **EN/RST** button after installing before they start.
 2. **Download a release:** get the `-full.bin` file for your board from [Releases](https://github.com/flysen/elpris-led/releases) and flash it at address 0x0 with any ESP flashing tool, for example:
    ```bash
    pip install esptool
@@ -102,7 +102,7 @@ All prices are spot prices excluding VAT, grid fees and energy tax.
 - All settings in a web UI at `http://elpris-led.local` (see the table above).
 - Shows up as `elpris-led-xxxxxx` in the router, so it's easy to find.
 - Updates itself: new releases are found within six hours and installed automatically, for each board type. Testers can opt in to release candidates.
-- Few API calls; cached prices are used if fetching fails, with automatic retries. The web UI shows the reason when fetching fails.
+- Few API calls; cached prices are used if fetching fails, with automatic retries. A day only counts as fetched when all of it arrived, and the web UI shows the reason when fetching fails.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
 - An emulator for trying the color modes and settings in a browser.
 
@@ -121,8 +121,10 @@ All prices are spot prices excluding VAT, grid fees and energy tax.
 
 | Board | Examples | Strip data pin | Notes |
 |---|---|---|---|
-| **ESP32** (recommended) | ESP32 DevKit, ESP32-WROOM-32, NodeMCU-32 | GPIO16 (marked D16 or RX2) | 4 MB flash. Not ESP32-C3, -S2 or -S3. More memory, so the most robust choice. |
-| **ESP8266** | NodeMCU, Wemos D1 mini | GPIO2 (marked D4) | Must have 4 MB flash (not ESP-01). Same pin as WLED uses. |
+| **ESP32** (recommended) | ESP32 DevKit, ESP32-WROOM-32, NodeMCU-32 | GPIO16 (marked D16 or RX2) | 4 MB flash. Not ESP32-C3, -S2 or -S3. More than ten times as much free memory as ESP8266. New features are developed for ESP32. |
+| **ESP8266** (maintenance only) | NodeMCU, Wemos D1 mini | GPIO2 (marked D4) | Must have 4 MB flash (not ESP-01). Same pin as WLED uses. Gets fixes but no new features: a secure connection needs almost all of its free memory, so there is no room left to grow. |
+
+Many ESP32 DevKit boards are too wide for a standard breadboard. Female Dupont wires straight onto the pins work well: only RX2, GND and, if the board powers the strip, VIN are needed.
 
 **Also needed:**
 
@@ -136,10 +138,10 @@ All prices are spot prices excluding VAT, grid fees and energy tax.
   GND ─────┬──────── GND
            └────────────────────────────────── GND
                      data pin ── 330 Ω ────── DIN
-                     (ESP32: GPIO16 / D16, ESP8266: GPIO2 / D4)
+                     (ESP32: GPIO16 / D16 / RX2, ESP8266: GPIO2 / D4)
 ```
 
-The board and the strip must share ground. Connect the strip at the end where the arrows point away from you (DIN). The strip can be mounted with that end on either side; use *Reverse direction* in the web UI to make time run left to right. Don't power the board from USB and the 5 V supply at the same time unless your board allows it: install over USB first, then connect the supply.
+The board and the strip must share ground. Don't power the strip from the board's 3V3 pin. Connect the strip at the end where the arrows point away from you (DIN). The strip can be mounted with that end on either side; use *Reverse direction* in the web UI to make time run left to right. Don't power the board from USB and the 5 V supply at the same time unless your board allows it: install over USB first, then connect the supply.
 
 ## Updating
 
@@ -203,7 +205,7 @@ Dependabot opens pull requests when the GitHub Actions used here get new version
 
 ### Contributing
 
-New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, emulator, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout. Bigger changes to what the strip shows are best described in a design document under `docs/` first, like [docs/normal-price-mode.md](docs/normal-price-mode.md).
+New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, emulator, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout. Bigger changes to what the strip shows are best described in a design document under `docs/` first, like [docs/normal-price-mode.md](docs/normal-price-mode.md). New features are developed for ESP32; on ESP8266, check that the free memory before a price fetch (shown in the web UI) doesn't go down.
 
 ## Releases (for maintainers)
 

@@ -4,6 +4,12 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+## v4.0.2
+
+- **ESP8266:** fetching prices and checking for updates failed on v4.0, because a secure connection needs almost all of the ESP8266's free memory. The lamp now asks each server whether it accepts smaller data packets, and then uses 4 kB instead of 16 kB of memory for the connection.
+- A day's prices only count as fetched when the whole day arrived. Before, a download that stopped half-way could leave the lamp without a price for the current time while the web page said *OK*. Now it tries again and shows how much arrived.
+- **ESP8266 is in maintenance mode from this version:** it keeps getting fixes like this one, but new features are developed for ESP32. An ESP32 board costs about the same and has more than ten times as much free memory. ESP32 is recommended for new lamps.
+
 ## v4.0.1
 
 - The lamp now introduces itself as **Elpris-LED** when it fetches prices and checks for updates, and asks for JSON, instead of using the network library's anonymous default. Some sites block anonymous requests.

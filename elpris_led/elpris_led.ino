@@ -14,9 +14,10 @@
 //    adjustable brightness, so "now" is easy to see
 //  - Few API calls: today's prices once a day, a few past days for the normal price, tomorrow's
 //    from 13:30 until they are available
-//  - Prices are read one at a time from the response, so it fits in ESP8266 memory
-//  - Exponential backoff + visual error indication, last error shown in the web UI, including the start
-//    of the server's response when it isn't price data
+//  - Prices are read one at a time from the response, so it fits in ESP8266 memory; on ESP8266, smaller
+//    TLS buffers are used when the server allows it
+//  - A day only counts as fetched when all of it arrived; the web UI shows how much of a response arrived
+//  - Exponential backoff + visual error indication, last error shown in the web UI
 //  - Cached data is used as long as it covers the current time ("offline" only when it runs out)
 //  - Settings are validated, WiFiManager fields show stored values
 //  - No blocking calls in the web handler
@@ -57,6 +58,10 @@ const char* MDNS_NAME  = "elpris-led";                   // reachable as http://
 // anonymous default user agents.
 const char* USER_AGENT = "Elpris-LED/" FW_VERSION " (+https://github.com/flysen/elpris-led)";
 
+const char* PRICE_HOST   = "www.elprisetjustnu.se";
+const char* PAGES_HOST   = "flysen.github.io";
+const char* GITHUB_API_HOST = "api.github.com";
+
 const int SLOTS_PER_DAY   = 96;
 const int RING_SIZE       = PRICE_CACHE_SLOTS;   // per board, see platform.h
 
@@ -77,9 +82,10 @@ const uint8_t PULSE_WHITE_MAX  = 220;   // how far towards white the current LED
 const unsigned long NOT_PUBLISHED_RETRY_MS  = 15UL * 60UL * 1000UL;
 
 // Our own fetch error codes. HTTPClient uses -1 to -11, so these start at -100.
-const int FETCH_ERR_BEGIN = -100;   // could not start the request
-const int FETCH_ERR_PARSE = -101;   // the response could not be read as price data
-const int FETCH_ERR_EMPTY = -102;   // the response had no prices
+const int FETCH_ERR_BEGIN   = -100;   // could not start the request
+const int FETCH_ERR_PARSE   = -101;   // the response could not be read as price data
+const int FETCH_ERR_EMPTY   = -102;   // the response had no prices
+const int FETCH_ERR_PARTIAL = -103;   // only part of the day arrived
 
 // ---------- UPDATES ----------
 // Stable channel: the install page (GitHub Pages) publishes manifest.json with the latest stable version
@@ -95,6 +101,30 @@ const char* RELEASE_DOWNLOAD = "https://github.com/flysen/elpris-led/releases/do
 const unsigned long UPDATE_FIRST_CHECK_MS = 2UL * 60UL * 1000UL;          // first check 2 min after boot
 const unsigned long UPDATE_INTERVAL_MS    = 6UL * 60UL * 60UL * 1000UL;   // then every 6 hours
 const unsigned long UPDATE_RETRY_MS       = 60UL * 60UL * 1000UL;         // retry after 1 h if the check fails
+
+// ---------- TLS MEMORY (ESP8266) ----------
+// A TLS connection normally needs a 16 kB receive buffer, which is most of what an ESP8266 has free. If the
+// server accepts smaller TLS fragments, 4 kB is enough and leaves room for everything else during a download.
+// Each server is asked once; servers that don't accept it keep the normal buffer. Firmware downloads always
+// use the normal buffer, because they may be redirected to another server.
+#if defined(ARDUINO_ARCH_ESP8266)
+struct TlsProbe { const char* host; int8_t smallOk; };   // smallOk: -1 not asked yet, 0 no, 1 yes
+TlsProbe tlsProbes[] = {{PRICE_HOST, -1}, {PAGES_HOST, -1}, {GITHUB_API_HOST, -1}};
+
+void shrinkTlsBuffers(WiFiClientSecure& client, const char* host) {
+  for (TlsProbe& p : tlsProbes) {
+    if (strcmp(p.host, host) != 0) continue;
+    if (p.smallOk < 0) {
+      p.smallOk = WiFiClientSecure::probeMaxFragmentLength(host, 443, 4096) ? 1 : 0;
+      Serial.printf("TLS 4 kB fragments %s by %s\n", p.smallOk ? "accepted" : "not accepted", host);
+    }
+    if (p.smallOk == 1) client.setBufferSizes(4096, 512);
+    return;
+  }
+}
+#else
+void shrinkTlsBuffers(WiFiClientSecure&, const char*) {}   // ESP32 has plenty of memory
+#endif
 
 // ---------- LED DATA ----------
 CRGB leds[MAX_LEDS];
@@ -183,7 +213,7 @@ unsigned long nextAttemptMs = 0;
 int          failStreak    = 0;
 bool         fetchFailing  = false;
 String       lastFetchError = "";            // shown in the web UI while fetching fails
-String       lastResponseInfo = "";          // content type and start of a response that had no prices
+String       lastResponseInfo = "";          // how much of the last price response arrived, and what it was
 unsigned long restartAtMs   = 0;
 bool         otaActive     = false;
 bool         mdnsActive    = false;
@@ -297,7 +327,7 @@ String priceUrl(time_t now, int dayOffset) {
   mktime(&t);
   char buf[16];
   strftime(buf, sizeof(buf), "%Y/%m-%d", &t);
-  return String("https://www.elprisetjustnu.se/api/v1/prices/") + buf + "_" + cfgArea + ".json";
+  return String("https://") + PRICE_HOST + "/api/v1/prices/" + buf + "_" + cfgArea + ".json";
 }
 
 String memoryInfo() {
@@ -308,22 +338,26 @@ String memoryInfo() {
 //  Fetching prices
 // =====================================================================
 String describeFetchError(int code) {
-  if (code > 0)               return "server answered HTTP " + String(code);
-  if (code == FETCH_ERR_BEGIN) return "could not start the request";
-  if (code == FETCH_ERR_PARSE) return "could not read the price data";
-  if (code == FETCH_ERR_EMPTY) return "no prices in the response";
+  if (code > 0)                  return "server answered HTTP " + String(code);
+  if (code == FETCH_ERR_BEGIN)   return "could not start the request";
+  if (code == FETCH_ERR_PARSE)   return "could not read the price data";
+  if (code == FETCH_ERR_EMPTY)   return "no prices in the response";
+  if (code == FETCH_ERR_PARTIAL) return "only part of the day's prices arrived";
   return HTTPClient::errorToString(code);   // connection, TLS and timeout errors
 }
 
-// Reads from another stream and keeps a copy of the first bytes, so the start of a response that turned out
-// not to be price data can be shown in the web UI.
+// Reads from another stream, counts the bytes and keeps a copy of the first ones, so the web UI can show how
+// much of a response arrived and how it started.
 class RecordingStream : public Stream {
  public:
   explicit RecordingStream(Stream& source) : src(source) {}
   int available() { return src.available(); }
   int read() {
     int c = src.read();
-    if (c >= 0 && len < sizeof(buf)) buf[len++] = (char)c;
+    if (c >= 0) {
+      total++;
+      if (len < sizeof(buf)) buf[len++] = (char)c;
+    }
     return c;
   }
   int peek() { return src.peek(); }
@@ -331,16 +365,19 @@ class RecordingStream : public Stream {
   void flush() {}
   char buf[80];
   size_t len = 0;
+  size_t total = 0;
  private:
   Stream& src;
 };
 
 // Fetches one day of prices. With sumOnly, the prices are added to that sum (for past days in the
-// normal price) instead of being stored per quarter in the cache.
+// normal price) instead of being stored per quarter in the cache. Returns true if any prices arrived;
+// the caller checks that the whole day did.
 bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   lastResponseInfo = "";
   WiFiClientSecure client;
   client.setInsecure();
+  shrinkTlsBuffers(client, PRICE_HOST);
   HTTPClient http;
   setHttpTimeouts(http);
   http.useHTTP10(true);
@@ -352,6 +389,7 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
 
   code = http.GET();
   if (code != HTTP_CODE_OK) { http.end(); return false; }
+  int expected = http.getSize();   // -1 if the server didn't say
 
   // The response is a JSON array with one object per price. Reading the objects one at a time,
   // instead of the whole array at once, keeps memory use small enough for ESP8266.
@@ -386,14 +424,17 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
     } while (stream.findUntil(",", "]"));
   }
 
+  // How much arrived, shown in the web UI if the day turns out to be incomplete
+  String received = String((unsigned long)stream.total) + (expected > 0 ? " of " + String(expected) : String("")) + " bytes";
   if (stored == 0) {
-    // Not price data: keep what the server sent, for the error shown in the web UI
     char snippet[61];
     responseSnippet(stream.buf, stream.len, snippet, sizeof(snippet));
     String type = http.header("Content-Type");
-    lastResponseInfo = "content type " + (type.length() ? type : String("missing")) +
+    lastResponseInfo = "received " + received + ", content type " + (type.length() ? type : String("missing")) +
                        ", response starts with \"" + String(snippet) + "\"";
     code = parseError ? FETCH_ERR_PARSE : FETCH_ERR_EMPTY;
+  } else {
+    lastResponseInfo = "received " + received + ", " + String(stored) + " quarters";
   }
   http.end();
   return stored > 0;
@@ -428,29 +469,32 @@ void serviceFetch(const struct tm& t, time_t now) {
   int code = 0;
 
   if (dayOffset < 0) {
-    // A past day: only its sum is kept. If it can't be fetched it is stored as empty and left out of the
-    // normal price, so a missing old day never blocks tomorrow's prices.
+    // A past day: only its sum is kept, and only if all of it arrived. If it can't be fetched it is stored as
+    // empty and left out of the normal price, so a missing old day never blocks tomorrow's prices.
     PriceSum day;
     bool ok = fetchDay(priceUrl(now, dayOffset), code, &day);
+    long daySlots = localMidnightSlot(now, dayOffset + 1) - localMidnightSlot(now, dayOffset);
+    if (ok && day.count < daySlots) { ok = false; code = FETCH_ERR_PARTIAL; }
     storeHistory(localMidnightSlot(now, dayOffset), ok ? day : PriceSum());
     needRebuild = true;
     nextAttemptMs = millis() + 1000UL;
     if (ok) Serial.printf("Prices fetched for the normal price (day %d)\n", dayOffset);
-    else    Serial.printf("Could not fetch day %d for the normal price: %s %s\n", dayOffset,
+    else    Serial.printf("Could not fetch day %d for the normal price: %s, %s\n", dayOffset,
                           describeFetchError(code).c_str(), lastResponseInfo.c_str());
     return;
   }
 
   bool ok = fetchDay(priceUrl(now, dayOffset), code, nullptr);
+  int32_t startSlot = dayOffset ? tomorrowSlot : todaySlot;
+  if (ok && !dayCovered(startSlot)) { ok = false; code = FETCH_ERR_PARTIAL; }   // keep what arrived, but try again
   unsigned long ms = millis();
+  needRebuild = true;
 
   if (ok) {
     failStreak = 0;
     fetchFailing = false;
     lastFetchError = "";
-    needRebuild = true;
-    int32_t startSlot = dayOffset ? tomorrowSlot : todaySlot;
-    nextAttemptMs = ms + (dayCovered(startSlot) ? 1000UL : NOT_PUBLISHED_RETRY_MS);
+    nextAttemptMs = ms + 1000UL;
     Serial.printf("Prices fetched (day +%d)\n", dayOffset);
   } else if (dayOffset == 1 && code == 404) {
     nextAttemptMs = ms + NOT_PUBLISHED_RETRY_MS;
@@ -475,6 +519,7 @@ void serviceFetch(const struct tm& t, time_t now) {
 bool fetchLatestVersion(String& out) {
   WiFiClientSecure client;
   client.setInsecure();
+  shrinkTlsBuffers(client, PAGES_HOST);
   HTTPClient http;
   setHttpTimeouts(http);
   http.useHTTP10(true);
@@ -502,6 +547,7 @@ bool fetchLatestVersion(String& out) {
 bool fetchNewestRelease(String& out) {
   WiFiClientSecure client;
   client.setInsecure();
+  shrinkTlsBuffers(client, GITHUB_API_HOST);
   HTTPClient http;
   setHttpTimeouts(http);
   http.useHTTP10(true);

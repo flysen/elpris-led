@@ -87,6 +87,7 @@ Try both modes, and all the settings, in the [emulator](https://flysen.github.io
 | Night mode start / end | Hours when the night brightness is used |
 | Day / night brightness | Overall brightness of the strip, 0–255 |
 | Install new releases automatically | On by default |
+| Also install test versions | Off by default. On: release candidates are installed too, wirelessly (see [Updating](#updating)) |
 | OTA password | Turns on updates from the Arduino IDE; empty means off |
 | Config portal password | Protects the *Elpris-LED-Config* wifi that opens when the lamp can't reach your network |
 
@@ -100,7 +101,7 @@ All prices are spot prices excluding VAT, grid fees and energy tax.
 - Time zone chosen from a list with plain names; daylight saving time and 23- and 25-hour days are handled.
 - All settings in a web UI at `http://elpris-led.local` (see the table above).
 - Shows up as `elpris-led-xxxxxx` in the router, so it's easy to find.
-- Updates itself: new releases are found within six hours and installed automatically, for each board type.
+- Updates itself: new releases are found within six hours and installed automatically, for each board type. Testers can opt in to release candidates.
 - Few API calls; cached prices are used if fetching fails, with automatic retries. The web UI shows the reason when fetching fails.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
 - An emulator for trying the color modes and settings in a browser.
@@ -144,6 +145,7 @@ The board and the strip must share ground. Connect the strip at the end where th
 
 - **Automatic (default):** the lamp checks for a new release two minutes after start and then every six hours. When it finds one, it restarts, installs the new firmware for its own board right after reconnecting to wifi (before anything else uses memory), and restarts again. This takes about a minute, with dim cyan dots on the strip. Wifi and settings are kept. If the download fails, the lamp starts normally and tries again at the next check.
 - **Check for updates now:** the button in the lamp's web UI does the same thing right away. The page reloads by itself while it checks and installs, and shows the current version, board and latest release. You can also turn automatic updates off there.
+- **Test channel:** tick *Also install test versions (release candidates)* in the web UI. The lamp then asks GitHub for the newest release, release candidates such as `v4.1-rc1` included, and installs it from the release's `-ota.bin` file, wirelessly. Untick it to go back; the lamp then stays on its version until the next stable release, which it installs as usual.
 - **Install page:** run it again and choose *not* to erase. Wifi and settings are kept.
 - **Arduino OTA:** if you've set an OTA password, the lamp shows up as `elpris-led-xxxxxx` among the network ports in the Arduino IDE. You can also upload `elpris-led-<version>-<board>-ota.bin` from [Releases](https://github.com/flysen/elpris-led/releases) with `espota.py`.
 
@@ -151,7 +153,7 @@ Builds you compile yourself, and CI builds, report version `dev` and never updat
 
 ## Emulator
 
-[flysen.github.io/elpris-led/emulator](https://flysen.github.io/elpris-led/emulator/) (source: `docs/emulator/index.html`) runs the lamp's color logic in the browser: both color modes, tomorrow's LEDs, dimming, the white pulse, reverse direction and night mode, on example days or on real prices you paste in. It is published together with the install page at every release.
+[flysen.github.io/elpris-led/emulator](https://flysen.github.io/elpris-led/emulator/) (source: `docs/emulator/index.html`) runs the lamp's color logic in the browser: both color modes, tomorrow's LEDs, dimming, the white pulse, reverse direction and night mode, on example days or on real prices you paste in. It is published together with the install page at every stable release. To see the version on `main` before that, open [raw.githack.com/flysen/elpris-led/main/docs/emulator/index.html](https://raw.githack.com/flysen/elpris-led/main/docs/emulator/index.html).
 
 The emulator repeats the lamp's logic in JavaScript, so when what the strip shows changes, the emulator must be updated in the same pull request (it's on the checklist).
 
@@ -180,7 +182,7 @@ In the Arduino IDE: add `https://espressif.github.io/arduino-esp32/package_esp32
 
 Use the versions listed in `scripts/arduino-deps.sh` to get the same result as a release.
 
-The logic that doesn't need the hardware is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer: time and daylight saving time, 15-minute slots, local-hour periods, LED order and direction, past/now/future, dimming, the normal price and its color levels, tomorrow's LEDs, the time zone list (offsets and DST change days for every zone), settings carried over from older versions, night mode and version comparison.
+The logic that doesn't need the hardware is in `elpris_led/elpris_logic.h`, shared by both boards, and is tested on a regular computer: time and daylight saving time, 15-minute slots, local-hour periods, LED order and direction, past/now/future, dimming, the normal price and its color levels, tomorrow's LEDs, the time zone list (offsets and DST change days for every zone), settings carried over from older versions, night mode, version comparison and the order of releases in the test channel.
 
 ```bash
 make test            # unit tests
@@ -223,11 +225,11 @@ The release stops before anything is published if:
 - a stable tag isn't higher than the previous stable release (lamps would ignore it),
 - any test or build check fails, for either board.
 
-**Release candidates** (`v2.1-rc1`) are published as pre-releases only. They don't update the install page and lamps never install them automatically. Flash the `-full.bin` on your own lamp, and when it works, tag `v2.1` on the same commit. A lamp running `v2.1-rc1` moves on to `v2.1` by itself.
+**Release candidates** (`v2.1-rc1`) are published as pre-releases only. They don't update the install page, and lamps on the normal channel never install them. Lamps with *Also install test versions* ticked install them with *Check for updates now*, or within six hours; others can flash the `-full.bin` by hand. When it works, tag `v2.1` on the same commit. A lamp running `v2.1-rc1` moves on to `v2.1` by itself, on either channel.
 
 **Flash layout:** ESP32 uses the *Minimal SPIFFS* partition scheme (two 1.9 MB app slots) and ESP8266 the *4MB (FS:1MB)* layout. Automatic updates only replace the app, never the flash layout, so these must not change in a release. If they ever have to, lamps need a USB install from the install page.
 
-**Install page paths:** lamps download `firmware/<board>/elpris-led.bin`. Lamps on v2.0 (ESP32 only) use `firmware/elpris-led.bin`, which the build keeps as a copy of the ESP32 app.
+**Install page paths:** lamps download `firmware/<board>/elpris-led.bin`. Lamps on v2.0 (ESP32 only) use `firmware/elpris-led.bin`, which the build keeps as a copy of the ESP32 app. Lamps on the test channel download `elpris-led-<tag>-<board>-ota.bin` from the release itself, so those file names must not change either.
 
 One-time repository setup before the first release:
 

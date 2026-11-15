@@ -36,13 +36,14 @@ a { color: var(--accent); }
 .summary .sub { color: var(--muted); font-size: 14px; }
 .strip-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 6px; }
 .strip-head .name { font-family: var(--display); font-weight: 600; font-size: 14px; }
-.chip { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
+.chip { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; font-family: var(--body); font-weight: 400; }
 .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .legend canvas { width: 150px; height: 10px; border-radius: 3px; display: block; }
 .dot { display: inline-flex; align-items: center; gap: 4px; }
 .dot i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 canvas.strip { width: 100%; height: 74px; display: block; cursor: crosshair; touch-action: manipulation; }
 canvas.chart { width: 100%; height: 220px; display: block; cursor: crosshair; touch-action: manipulation; }
+canvas.board { width: 100%; max-width: 380px; height: 150px; display: block; margin-bottom: 8px; }
 .readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .tile .k { font-size: 12px; color: var(--muted); }
@@ -52,7 +53,7 @@ canvas.chart { width: 100%; height: 220px; display: block; cursor: crosshair; to
 .ctl .lab { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
 .ctl .lab output { font-family: var(--mono); color: var(--accent); font-variant-numeric: tabular-nums; }
 .help { font-size: 12px; color: var(--muted); margin: 0; }
-select, input[type=number], input[type=date], textarea {
+select, input[type=number], input[type=date], input[type=text], textarea {
   width: 100%; background: #0f1318; color: var(--ink); border: 1px solid var(--line); border-radius: 6px;
   padding: 7px 9px; font-family: var(--body); font-size: 14px;
 }
@@ -246,7 +247,7 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
     </div>
   </section>
 
-  <details class="card advanced">
+  <details class="card advanced" id="advanced">
     <summary>Advanced</summary>
     <div class="adv-grid">
       <div>
@@ -266,6 +267,48 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
         </div>
         <h3>Technical details</h3>
         <div class="readout" id="techReadout"></div>
+      </div>
+
+      <div>
+        <h3>The board's blue LED <span class="chip">planned</span></h3>
+        <p class="help" style="margin-bottom:10px">A preview of how the small blue LED on the ESP32 board is planned to show what the lamp is doing, including its network address. It isn't in the lamp yet: try the blink patterns here first.</p>
+        <canvas id="board" class="board" aria-label="ESP32 board with its blue LED"></canvas>
+        <p class="help" id="boardCaption" style="margin-bottom:12px"></p>
+        <div class="ctl">
+          <div class="lab"><label for="boardState">The lamp is</label></div>
+          <select id="boardState">
+            <option value="startup" selected>Starting up: wifi, address, fetching, OK</option>
+            <option value="portal">Waiting in its own wifi, Elpris-LED-Config</option>
+            <option value="ip">Showing its address after connecting</option>
+            <option value="ok">Working normally</option>
+            <option value="fetching">Fetching prices</option>
+            <option value="failing">Failing to fetch prices</option>
+            <option value="updating">Installing an update</option>
+          </select>
+        </div>
+        <div class="two">
+          <div class="ctl"><div class="lab"><label for="ipAddr">Address</label></div><input id="ipAddr" type="text" value="172.16.1.90" inputmode="decimal" spellcheck="false"></div>
+          <div class="ctl"><div class="lab"><label for="netmask">Network mask</label></div>
+            <select id="netmask">
+              <option value="3">255.255.255.0 (/24)</option>
+              <option value="2" selected>255.255.0.0 (/16)</option>
+              <option value="1">255.0.0.0 (/8)</option>
+              <option value="0">Whole address</option>
+            </select></div>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="okStyle">When working normally</label></div>
+          <select id="okStyle">
+            <option value="slow">Slow blink</option>
+            <option value="heartbeat" selected>A short blink every 10 seconds</option>
+            <option value="off">Off</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="blinkMs">Length of a short blink</label><output id="blinkMsOut"></output></div>
+          <input id="blinkMs" type="range" min="150" max="500" step="25" value="250">
+          <p class="help">Longer is easier to count, shorter is quicker to show.</p>
+        </div>
       </div>
 
       <div>
@@ -564,6 +607,8 @@ function readS() {
     ? "Following the real time. Untick Use the real time to drag the clock or press Play."
     : "Drag to see the strip at another time, or press Play to watch a day go by.";
   $("varDesc").textContent = describe(S.V);
+  $("blinkMsOut").textContent = $("blinkMs").value + " ms";
+  buildBoardPattern();
 }
 const ORIGINAL = { scale: "relative", basis: "window", win: "orig", agg: "mean", gamma: 1, steps: 0, palette: "orig", minspan: 0.5, absLo: 0.3, absHi: 2 };
 function describe(V) {
@@ -709,6 +754,117 @@ function fitCanvas(c) {
   const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
   if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
   const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [ctx, w, h];
+}
+
+/* ---------- The board's blue LED (planned) ---------- */
+// A blink pattern is a list of [on, milliseconds] steps that repeats. Building it here first makes it easy to
+// try timings before the same patterns go into the firmware.
+let boardPattern = { steps: [[0, 1000]], total: 1000, caption: "" };
+function ipPartsToBlink() {
+  const octets = $("ipAddr").value.trim().split(".").map(Number);
+  const valid = octets.length === 4 && octets.every(o => Number.isInteger(o) && o >= 0 && o <= 255);
+  if (!valid) return null;
+  return octets.slice(+$("netmask").value);   // the parts that differ between devices on the network
+}
+function buildBoardPattern() {
+  const unit = +$("blinkMs").value;
+  const steps = [];
+  const on = ms => steps.push([1, ms]), off = ms => steps.push([0, ms]);
+  const blinkFast = n => { for (let i = 0; i < n; i++) { on(100); off(100); } };
+  const okSteps = () => {
+    const style = $("okStyle").value;
+    if (style === "slow") { on(1000); off(1000); }
+    else if (style === "heartbeat") { on(120); off(9880); }
+    else off(10000);
+  };
+  const ipSteps = parts => {
+    parts.forEach((part, pi) => {
+      const digits = String(part).split("").map(Number);
+      digits.forEach((d, di) => {
+        if (d === 0) { on(unit * 4); off(unit); }               // 0 = one long blink
+        else for (let k = 0; k < d; k++) { on(unit); off(unit); }
+        if (di < digits.length - 1) off(unit * 4);              // short pause between digits
+      });
+      if (pi < parts.length - 1) off(unit * 10);                // long pause between the parts
+    });
+    off(unit * 20);                                             // before the address is shown again
+  };
+  const describeIp = parts => parts.map(p => String(p).split("").map(d => d === "0" ? "1 long" : d + " short").join(", pause, ")).join(" — long pause — ");
+
+  const state = $("boardState").value;
+  const parts = ipPartsToBlink();
+  let caption;
+  switch (state) {
+    case "portal":
+      blinkFast(10);
+      caption = "Fast blinking: connect to the wifi Elpris-LED-Config with your phone to set the lamp up.";
+      break;
+    case "ip":
+      if (parts) { ipSteps(parts); caption = `Blinks ${parts.join(" · ")}: ${describeIp(parts)}. Shown three times after connecting.`; }
+      else { off(1000); caption = "Type a valid address, like 172.16.1.90."; }
+      break;
+    case "ok":
+      okSteps();
+      caption = { slow: "Slow blinking: everything works.", heartbeat: "A short blink every 10 seconds: everything works, without disturbing.", off: "Off: everything works." }[$("okStyle").value];
+      break;
+    case "fetching":
+      on(3000); off(500);
+      caption = "On while fetching prices, a few seconds.";
+      break;
+    case "failing":
+      on(150); off(150); on(150); off(1500);
+      caption = "Double blinks: fetching prices fails. The lamp keeps trying; its web page shows why.";
+      break;
+    case "updating":
+      on(4000); off(200);
+      caption = "On while an update is installed, about a minute.";
+      break;
+    default:   // the whole startup, from power on to working normally
+      blinkFast(15);
+      off(800);
+      if (parts) ipSteps(parts);
+      on(2500); off(600);
+      for (let i = 0; i < 2; i++) okSteps();
+      caption = "Starting up: fast blinking while connecting, then the address" + (parts ? ` (${parts.join(" · ")})` : "") + ", on while fetching prices, then working normally.";
+  }
+  boardPattern = { steps, total: steps.reduce((a, s) => a + s[1], 0) || 1, caption };
+  $("boardCaption").textContent = caption;
+}
+function boardLedOn(t) {
+  let tt = t % boardPattern.total;
+  for (const [on, ms] of boardPattern.steps) { if (tt < ms) return !!on; tt -= ms; }
+  return false;
+}
+function drawBoard(t) {
+  const [ctx, w, h] = fitCanvas($("board"));
+  ctx.clearRect(0, 0, w, h);
+  const bx = 20, by = 25, bw = Math.min(w - 40, 330), bh = 100;
+  // The board, with its pin rows, the ESP32 module and the USB connector on the right
+  ctx.fillStyle = "#16233a"; ctx.beginPath(); ctx.roundRect(bx, by, bw, bh, 6); ctx.fill();
+  ctx.fillStyle = "#c8a24a";
+  for (let i = 0; i < 15; i++) {
+    const x = bx + 14 + i * (bw - 28) / 14;
+    ctx.beginPath(); ctx.arc(x, by + 8, 2.5, 0, Math.PI * 2); ctx.arc(x, by + bh - 8, 2.5, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = "#2a2f36"; ctx.fillRect(bx + 18, by + 22, bw * 0.42, bh - 44);
+  ctx.fillStyle = "#3a4048"; ctx.fillRect(bx + 26, by + 30, bw * 0.42 - 16, bh - 60);
+  ctx.fillStyle = "#9aa3ad"; ctx.font = "10px 'IBM Plex Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText("ESP32", bx + 26 + (bw * 0.42 - 16) / 2, by + bh / 2);
+  ctx.fillStyle = "#8c939b"; ctx.fillRect(bx + bw - 18, by + bh / 2 - 12, 26, 24);
+  // The red power LED is always on; the blue one follows the pattern
+  const led = (x, color, lit, label) => {
+    ctx.fillStyle = "#0b111a"; ctx.fillRect(x - 6, by + bh / 2 - 4, 12, 8);
+    if (lit) {
+      ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 18; ctx.fillStyle = color;
+      ctx.fillRect(x - 5, by + bh / 2 - 3, 10, 6); ctx.restore();
+    }
+    ctx.fillStyle = "#8a93a3"; ctx.font = "10px 'IBM Plex Sans', sans-serif"; ctx.textAlign = "center"; ctx.fillText(label, x, by + bh / 2 + 16);
+  };
+  const ledX = bx + bw * 0.62;
+  led(ledX, "#ff3b30", true, "power");
+  led(ledX + 50, "#3d8bff", boardLedOn(t), "blue (GPIO2)");
+  ctx.fillStyle = "#8a93a3"; ctx.textAlign = "left"; ctx.font = "11px 'IBM Plex Sans', sans-serif";
+  ctx.fillText("USB", bx + bw - 14, by - 10);
 }
 
 /* ---------- Drawing ---------- */
@@ -911,6 +1067,7 @@ function frame(t) {
     last.legend = key;
   }
   drawChart(st.all, S.mode === "normal" ? st.prop : st.orig, S.minute);
+  if ($("advanced").open) drawBoard(t);
   const sum = summary(st);
   if (sum !== last.summary) { $("summary").innerHTML = sum; last.summary = sum; }
   techReadout(st);

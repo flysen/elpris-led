@@ -9,14 +9,12 @@
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  /* Layout: the LED strips at the top as a stage, the price chart below, then the control panels in a grid */
   --bg: #0d1014;
   --panel: #151a21;
   --line: #262d38;
   --ink: #e7e9ee;
   --muted: #8a93a3;
   --accent: #f2b84b;
-  --strip: #07090c;
   --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
   --body: "IBM Plex Sans", "Segoe UI", Roboto, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
@@ -27,21 +25,27 @@ html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: v
 main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 48px; display: grid; gap: 18px; }
 h1 { font-family: var(--display); font-weight: 700; font-size: 26px; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
 h2 { font-family: var(--display); font-weight: 500; font-size: 16px; margin: 0 0 12px; color: var(--ink); text-wrap: balance; }
-header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
-header a, footer a, .help a { color: var(--accent); }
+h3 { font-family: var(--display); font-weight: 500; font-size: 14px; margin: 18px 0 8px; color: var(--ink); }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 72ch; }
+a { color: var(--accent); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
-.stage { display: grid; gap: 14px; }
+.stage { display: flex; flex-direction: column; gap: 14px; }
+.summary { display: grid; gap: 4px; font-size: 17px; }
+.summary .now { font-size: 20px; font-weight: 600; }
+.summary .sub { color: var(--muted); font-size: 14px; }
 .strip-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 6px; }
 .strip-head .name { font-family: var(--display); font-weight: 600; font-size: 14px; }
 .chip { font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
-.legend { display: flex; align-items: center; gap: 8px; margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .legend canvas { width: 150px; height: 10px; border-radius: 3px; display: block; }
-canvas.strip { width: 100%; height: 74px; display: block; cursor: crosshair; }
-canvas.chart { width: 100%; height: 220px; display: block; cursor: crosshair; }
+.dot { display: inline-flex; align-items: center; gap: 4px; }
+.dot i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+canvas.strip { width: 100%; height: 74px; display: block; cursor: crosshair; touch-action: manipulation; }
+canvas.chart { width: 100%; height: 220px; display: block; cursor: crosshair; touch-action: manipulation; }
 .readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .tile { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .tile .k { font-size: 12px; color: var(--muted); }
-.tile .v { font-family: var(--mono); font-size: 17px; font-variant-numeric: tabular-nums; }
+.tile .v { font-family: var(--mono); font-size: 16px; font-variant-numeric: tabular-nums; }
 .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
 .ctl { display: grid; gap: 4px; margin-bottom: 12px; }
 .ctl .lab { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
@@ -53,7 +57,7 @@ select, input[type=number], input[type=date], textarea {
 }
 textarea { font-family: var(--mono); font-size: 12px; min-height: 90px; resize: vertical; }
 input[type=range] { width: 100%; accent-color: var(--accent); }
-input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; }
+input[type=checkbox] { accent-color: var(--accent); width: 16px; height: 16px; margin: 0; flex: none; }
 .check { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-bottom: 10px; cursor: pointer; }
 .check input { margin-top: 2px; }
 .btnrow { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -66,9 +70,13 @@ button.primary { background: var(--accent); color: #1a1406; border-color: var(--
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .hidden { display: none !important; }
-.paste-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+details.advanced > summary { cursor: pointer; font-family: var(--display); font-weight: 500; font-size: 16px; list-style: none; }
+details.advanced > summary::-webkit-details-marker { display: none; }
+details.advanced > summary::before { content: "▸ "; color: var(--accent); }
+details.advanced[open] > summary::before { content: "▾ "; }
+details.advanced[open] > summary { margin-bottom: 12px; }
+.adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
 .url { font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--muted); }
-.url a { color: var(--accent); }
 .msg { font-size: 13px; min-height: 1.2em; }
 .msg.err { color: #ff8a7a; }
 .msg.ok { color: #8fd694; }
@@ -84,71 +92,83 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
 <main>
   <header>
     <h1>Elpris-LED emulator</h1>
-    <p>Runs the color logic of Elpris-LED v4 in the browser, on today's real prices or on example days. The top strip is the default color mode, <i>Compared with a normal price</i>. Below it is the other mode, <i>Cheapest to most expensive</i>, and optionally a third strip with free variants of it to experiment with. <a href="../">Install page</a> · <a href="https://github.com/flysen/elpris-led">GitHub</a></p>
+    <p>See what an Elpris-LED lamp shows right now, and try its settings before you change them on your own lamp. It opens on today's real electricity prices. <a href="../">Install page</a> · <a href="https://github.com/flysen/elpris-led">GitHub</a></p>
   </header>
 
-  <section class="card stage" aria-label="Strips and price chart">
+  <section class="card stage" aria-label="What the lamp shows">
+    <div class="summary" id="summary" aria-live="polite"></div>
+
     <div id="propBlock">
       <div class="strip-head">
-        <span class="name">Compared with a normal price (default)</span>
-        <span class="chip" id="propDesc"></span>
+        <span class="name">Compared with a normal price</span>
         <div class="legend" id="propKey"></div>
       </div>
-      <canvas id="stripProp" class="strip"></canvas>
+      <canvas id="stripProp" class="strip" aria-label="The LED strip, compared with a normal price"></canvas>
     </div>
-    <div>
+
+    <div id="origBlock">
       <div class="strip-head">
         <span class="name">Cheapest to most expensive</span>
-        <span class="chip">relative scale, whole window, average per LED</span>
         <div class="legend"><span id="lgOrigLo"></span><canvas id="lgOrig" width="300" height="20"></canvas><span id="lgOrigHi"></span></div>
       </div>
-      <canvas id="stripOrig" class="strip"></canvas>
+      <canvas id="stripOrig" class="strip" aria-label="The LED strip, cheapest to most expensive"></canvas>
     </div>
-    <div id="variantBlock">
+
+    <div id="variantBlock" class="hidden">
       <div class="strip-head">
-        <span class="name">Variant</span>
+        <span class="name">Experiment</span>
         <span class="chip" id="varDesc"></span>
         <div class="legend"><span id="lgVarLo"></span><canvas id="lgVar" width="300" height="20"></canvas><span id="lgVarHi"></span></div>
       </div>
-      <canvas id="stripVar" class="strip"></canvas>
+      <canvas id="stripVar" class="strip" aria-label="Experimental color scale"></canvas>
     </div>
-    <div class="readout" id="readout"></div>
-    <canvas id="chart" class="chart"></canvas>
+
+    <p class="help">Hover over an LED or the chart, or tap it on a phone, for details. Midnight is at the cable end of the strip, on the left here.</p>
+
+    <div>
+      <h2 style="margin-bottom:6px">Prices per 15 minutes <span class="help">(öre/kWh, spot price excl. VAT, grid fees and tax)</span></h2>
+      <canvas id="chart" class="chart" aria-label="Price chart for today and tomorrow"></canvas>
+    </div>
   </section>
 
   <section class="controls">
     <div class="card">
-      <h2>Time and prices</h2>
+      <h2>Prices and time</h2>
       <div class="ctl">
-        <div class="lab"><label for="scenario">Price day</label></div>
+        <div class="lab"><label for="scenario">Prices</label></div>
         <select id="scenario">
           <option value="real" disabled>Real prices (loading…)</option>
-          <option value="winter" selected>Ordinary winter day (example)</option>
-          <option value="flat">Evenly cheap day (example)</option>
-          <option value="spike">A high evening peak (example)</option>
-          <option value="negative">Negative prices around midday (example)</option>
-          <option value="cheapweek">Cheap week, more expensive today (example)</option>
-          <option value="dearmorrow">Normal day, very expensive tomorrow (example)</option>
-          <option value="pasted" disabled>Pasted real prices</option>
+          <option value="winter" selected>Example: ordinary winter day</option>
+          <option value="flat">Example: evenly cheap day</option>
+          <option value="spike">Example: a high evening peak</option>
+          <option value="negative">Example: negative prices around midday</option>
+          <option value="cheapweek">Example: cheap week, more expensive today</option>
+          <option value="dearmorrow">Example: normal day, very expensive tomorrow</option>
+          <option value="pasted" disabled>Prices you pasted</option>
         </select>
       </div>
       <div class="ctl" id="realAreaBox">
         <div class="lab"><label for="realArea">Price area</label></div>
         <select id="realArea">
-          <option>SE1</option><option>SE2</option><option selected>SE3</option><option>SE4</option>
+          <option value="SE1">SE1 – Luleå, northern Sweden</option>
+          <option value="SE2">SE2 – Sundsvall, northern central Sweden</option>
+          <option value="SE3" selected>SE3 – Stockholm, southern central Sweden</option>
+          <option value="SE4">SE4 – Malmö, southern Sweden</option>
         </select>
         <p class="help" id="realInfo"></p>
       </div>
-      <div class="btnrow" style="margin-bottom:12px"><button id="reseed" type="button">New random example days</button></div>
+      <div class="btnrow" id="reseedBox" style="margin-bottom:12px"><button id="reseed" type="button">Another example day</button></div>
+      <label class="check"><input id="live" type="checkbox"><span>Use the real time</span></label>
       <div class="ctl">
-        <div class="lab"><label for="time">Simulated clock</label><output id="timeOut"></output></div>
+        <div class="lab"><label for="time">Time of day</label><output id="timeOut"></output></div>
         <input id="time" type="range" min="0" max="1439" step="1" value="840">
+        <p class="help" id="timeHelp">Drag to see the strip at another time, or press Play to watch a day go by.</p>
       </div>
       <div class="two">
         <div class="ctl">
-          <div class="lab"><label for="speed">Playback</label></div>
+          <div class="lab"><label for="speed">Speed</label></div>
           <select id="speed">
-            <option value="15">15 min per second</option>
+            <option value="15">15 minutes per second</option>
             <option value="60" selected>1 hour per second</option>
             <option value="180">3 hours per second</option>
           </select>
@@ -158,171 +178,185 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
           <button id="play" type="button" class="primary">Play</button>
         </div>
       </div>
-      <label class="check"><input id="live" type="checkbox"><span>Follow the real clock</span></label>
-      <div class="ctl">
-        <div class="lab"><label for="tomorrow">Tomorrow's prices</label></div>
-        <select id="tomorrow">
-          <option value="auto">Like the lamp: available from 13:30</option>
-          <option value="always">Always available</option>
-          <option value="never">Never available</option>
-        </select>
-        <p class="help">The lamp starts looking for tomorrow's prices at 13:30. When they arrive, the colors are recalculated. With real prices, tomorrow is only available once it has been published.</p>
-      </div>
     </div>
 
     <div class="card">
-      <h2>The strip (the lamp's settings)</h2>
+      <h2>The lamp's settings</h2>
+      <p class="help" style="margin-bottom:12px">The same settings, with the same names, as on your lamp's own web page.</p>
       <div class="ctl">
         <div class="lab"><label for="leds">Number of LEDs</label><output id="ledsOut"></output></div>
         <input id="leds" type="range" min="10" max="300" step="1" value="100">
-        <p class="help">The lamp's default is 100. With 96 or 192, every LED gets whole quarters.</p>
       </div>
-      <label class="check"><input id="reverse" type="checkbox"><span>Reverse direction (midnight at the other end)</span></label>
+      <div class="ctl">
+        <div class="lab"><label for="colorMode">Colors</label></div>
+        <select id="colorMode">
+          <option value="normal" selected>Compared with a normal price</option>
+          <option value="range">Cheapest to most expensive</option>
+        </select>
+        <p class="help" id="colorModeHelp"></p>
+      </div>
+      <div id="normalSettings">
+        <div class="ctl">
+          <div class="lab"><label for="histDays">Normal price: past days</label><output id="histDaysOut"></output></div>
+          <input id="histDays" type="range" min="0" max="7" step="1" value="3">
+          <p class="help" id="histHelp"></p>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="dead">Doesn't matter within</label><output id="deadOut"></output></div>
+          <input id="dead" type="range" min="5" max="100" step="5" value="20">
+          <p class="help">Prices this close to the normal price are yellow.</p>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="extreme">Very cheap or expensive from</label><output id="extremeOut"></output></div>
+          <input id="extreme" type="range" min="20" max="300" step="10" value="80">
+          <p class="help">Prices this far from the normal price are green or red. Only used with 5 levels.</p>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="levels">Levels</label></div>
+          <select id="levels">
+            <option value="5" selected>5: green, yellow-green, yellow, orange, red</option>
+            <option value="3">3: green, yellow, red</option>
+          </select>
+        </div>
+        <label class="check"><input id="normTomorrow" type="checkbox" checked><span>Count tomorrow in the normal price
+          <br><span class="help">Today's colors may then change when tomorrow's prices arrive: an expensive tomorrow makes today greener.</span></span></label>
+      </div>
+      <label class="check"><input id="reverse" type="checkbox"><span>Reverse direction
+        <br><span class="help">Midnight at the other end of the strip.</span></span></label>
       <label class="check"><input id="pulseWhite" type="checkbox" checked><span>Pulse the current 15 minutes towards white</span></label>
       <div class="ctl">
         <div class="lab"><label for="pastPct">Brightness of passed time</label><output id="pastOut"></output></div>
         <input id="pastPct" type="range" min="0" max="100" step="1" value="10">
+        <p class="help">100 % = not dimmed, 0 % = off.</p>
       </div>
-      <label class="check"><input id="applyBright" type="checkbox"><span>Simulate brightness and night mode</span></label>
+      <label class="check"><input id="applyBright" type="checkbox"><span>Show day and night brightness</span></label>
       <div id="brightBox" class="hidden">
         <div class="two">
-          <div class="ctl"><div class="lab"><label for="bday">Day (0–255)</label><output id="bdayOut"></output></div><input id="bday" type="range" min="1" max="255" value="40"></div>
-          <div class="ctl"><div class="lab"><label for="bnight">Night (0–255)</label><output id="bnightOut"></output></div><input id="bnight" type="range" min="0" max="255" value="5"></div>
+          <div class="ctl"><div class="lab"><label for="nstart">Night mode start</label></div><input id="nstart" type="number" min="0" max="23" value="23"></div>
+          <div class="ctl"><div class="lab"><label for="nend">Night mode end</label></div><input id="nend" type="number" min="0" max="23" value="6"></div>
         </div>
         <div class="two">
-          <div class="ctl"><div class="lab"><label for="nstart">Night starts (hour)</label></div><input id="nstart" type="number" min="0" max="23" value="23"></div>
-          <div class="ctl"><div class="lab"><label for="nend">Night ends (hour)</label></div><input id="nend" type="number" min="0" max="23" value="6"></div>
+          <div class="ctl"><div class="lab"><label for="bday">Day brightness</label><output id="bdayOut"></output></div><input id="bday" type="range" min="1" max="255" value="40"></div>
+          <div class="ctl"><div class="lab"><label for="bnight">Night brightness</label><output id="bnightOut"></output></div><input id="bnight" type="range" min="0" max="255" value="5"></div>
         </div>
       </div>
-      <label class="check"><input id="perceptual" type="checkbox" checked><span>Show LED light the way the eye sees it
-        <br><span class="help">LEDs are linear but the eye is logarithmic, so 10 % looks like about a third. Off: raw values straight to the screen.</span></span></label>
-    </div>
-
-    <div class="card">
-      <h2>Compared with a normal price</h2>
-      <p class="help" style="margin-bottom:12px">Today fills the strip from midnight to midnight, colored by how the price compares with a normal price. Yellow means it doesn't matter. After one off LED come two LEDs comparing tomorrow's average 08–17 and 17–24 with the same hours today. They are off until tomorrow's prices are published, which the lamp notices from 13:30.</p>
-      <label class="check"><input id="showProp" type="checkbox" checked><span>Show this mode</span></label>
-      <div class="ctl">
-        <div class="lab"><label for="histDays">Normal price: past days</label><output id="histDaysOut"></output></div>
-        <input id="histDays" type="range" min="0" max="7" step="1" value="3">
-        <p class="help" id="histHelp">The average of these days plus today and, if ticked below, tomorrow.</p>
-      </div>
-      <label class="check"><input id="normTomorrow" type="checkbox" checked><span>Count tomorrow in the normal price
-        <br><span class="help">Today's colors may then change when tomorrow's prices arrive: an expensive tomorrow makes today greener.</span></span></label>
-      <div class="ctl">
-        <div class="lab"><label for="dead">Doesn't matter within</label><output id="deadOut"></output></div>
-        <input id="dead" type="range" min="5" max="100" step="5" value="20">
-      </div>
-      <div class="ctl">
-        <div class="lab"><label for="extreme">Very cheap or expensive from</label><output id="extremeOut"></output></div>
-        <input id="extreme" type="range" min="20" max="300" step="10" value="80">
-        <p class="help">In öre from the normal price. A price of zero or less is always very cheap. The same limits apply to the two tomorrow LEDs, measured as the difference from today. Only used with 5 levels.</p>
-      </div>
-      <div class="ctl">
-        <div class="lab"><label for="levels">Levels</label></div>
-        <select id="levels">
-          <option value="5" selected>5: green, yellow-green, yellow, orange, red</option>
-          <option value="3">3: green, yellow, red</option>
-        </select>
-      </div>
-      <label class="check"><input id="ticks" type="checkbox"><span>Mark 06, 12 and 18 with a faint white LED (emulator only)</span></label>
-    </div>
-
-    <div class="card">
-      <h2>Variants of the algorithm (experiments)</h2>
-      <p class="help" style="margin-bottom:12px">Ideas for other scales, for comparison. These are not in the lamp.</p>
-      <label class="check"><input id="showVar" type="checkbox"><span>Show the variant strip</span></label>
-      <div class="ctl">
-        <div class="lab"><label for="scale">Color scale</label></div>
-        <select id="scale">
-          <option value="relative">Relative, cheapest–most expensive (the lamp)</option>
-          <option value="minspan" selected>Relative with a minimum span</option>
-          <option value="rank">Ranking (as many of each color)</option>
-          <option value="absolute">Fixed limits in öre</option>
-        </select>
-      </div>
-      <div class="ctl" id="minspanBox">
-        <div class="lab"><label for="minspan">Minimum span</label><output id="minspanOut"></output></div>
-        <input id="minspan" type="range" min="5" max="300" step="5" value="50">
-        <p class="help">The cheapest is always green. If the difference between cheapest and most expensive is smaller than the span, it never turns fully red.</p>
-      </div>
-      <div id="absBox" class="two hidden">
-        <div class="ctl"><div class="lab"><label for="absLo">Green below (öre)</label></div><input id="absLo" type="number" step="5" value="30"></div>
-        <div class="ctl"><div class="lab"><label for="absHi">Red above (öre)</label></div><input id="absHi" type="number" step="5" value="200"></div>
-      </div>
-      <div class="ctl">
-        <div class="lab"><label for="basis">Basis for cheapest and most expensive</label></div>
-        <select id="basis">
-          <option value="window">The whole window (the lamp)</option>
-          <option value="remaining">Only the time that is left</option>
-        </select>
-      </div>
-      <div class="ctl">
-        <div class="lab"><label for="win">What the strip shows</label></div>
-        <select id="win">
-          <option value="orig">Midnight to midnight (the lamp)</option>
-          <option value="rolling">From now to the last known price</option>
-        </select>
-      </div>
-      <div class="ctl">
-        <div class="lab"><label for="agg">When an LED covers several quarters</label></div>
-        <select id="agg">
-          <option value="mean">Average (the lamp)</option>
-          <option value="max">Most expensive quarter</option>
-          <option value="min">Cheapest quarter</option>
-        </select>
-      </div>
-      <div class="ctl">
-        <div class="lab"><label for="gamma">Curve</label><output id="gammaOut"></output></div>
-        <input id="gamma" type="range" min="0.3" max="3" step="0.1" value="1">
-        <p class="help">1 is linear. Above 1, more quarters are green and only the peaks are red.</p>
-      </div>
-      <div class="two">
-        <div class="ctl">
-          <div class="lab"><label for="steps">Color steps</label></div>
-          <select id="steps">
-            <option value="0">Continuous (the lamp)</option>
-            <option value="3">3 levels</option>
-            <option value="4">4 levels</option>
-            <option value="5">5 levels</option>
-          </select>
-        </div>
-        <div class="ctl">
-          <div class="lab"><label for="palette">Palette</label></div>
-          <select id="palette">
-            <option value="orig">Green to red via yellow (the lamp)</option>
-            <option value="gyr">Pure green, yellow, red</option>
-            <option value="bluered">Blue to red</option>
-          </select>
-        </div>
-      </div>
-      <div class="btnrow"><button id="resetVar" type="button">Reset the variant to the lamp</button></div>
     </div>
   </section>
 
-  <section class="card">
-    <h2>Paste prices yourself</h2>
-    <p class="help" style="margin-bottom:12px">For a specific date or area. Open the addresses below in a new tab, select everything, copy and paste it here. Tomorrow can be left empty.</p>
-    <div class="paste-grid">
+  <details class="card advanced">
+    <summary>Advanced</summary>
+    <div class="adv-grid">
       <div>
+        <h3>Display</h3>
+        <label class="check"><input id="compare" type="checkbox"><span>Show both color modes, one above the other</span></label>
+        <label class="check"><input id="perceptual" type="checkbox" checked><span>Show the LEDs as the eye sees them
+          <br><span class="help">A dimmed LED looks brighter to the eye than the number says: 10 % looks like about a third. Untick to show the raw values.</span></span></label>
+        <label class="check"><input id="ticks" type="checkbox"><span>Mark 06, 12 and 18 on the strip with a faint white LED
+          <br><span class="help">Only in the emulator, to make it easier to find your way along the strip.</span></span></label>
+        <div class="ctl">
+          <div class="lab"><label for="tomorrow">Tomorrow's prices</label></div>
+          <select id="tomorrow">
+            <option value="auto">As the lamp: shown from 13:30, once published</option>
+            <option value="always">Always shown, if published</option>
+            <option value="never">Never shown</option>
+          </select>
+        </div>
+        <h3>Technical details</h3>
+        <div class="readout" id="techReadout"></div>
+      </div>
+
+      <div>
+        <h3>Experiments: other color scales</h3>
+        <p class="help" style="margin-bottom:12px">Ideas for other ways to color the strip, for comparison with <i>Cheapest to most expensive</i>. These are not in the lamp.</p>
+        <label class="check"><input id="showVar" type="checkbox"><span>Show the experiment strip</span></label>
+        <div class="ctl">
+          <div class="lab"><label for="scale">Color scale</label></div>
+          <select id="scale">
+            <option value="relative">Cheapest to most expensive (the lamp)</option>
+            <option value="minspan" selected>Cheapest to most expensive, with a minimum span</option>
+            <option value="rank">Ranking: as many of each color</option>
+            <option value="absolute">Fixed limits in öre</option>
+          </select>
+        </div>
+        <div class="ctl" id="minspanBox">
+          <div class="lab"><label for="minspan">Minimum span</label><output id="minspanOut"></output></div>
+          <input id="minspan" type="range" min="5" max="300" step="5" value="50">
+          <p class="help">The cheapest is always green. If the most expensive is less than this much dearer, it never turns fully red.</p>
+        </div>
+        <div id="absBox" class="two hidden">
+          <div class="ctl"><div class="lab"><label for="absLo">Green below (öre)</label></div><input id="absLo" type="number" step="5" value="30"></div>
+          <div class="ctl"><div class="lab"><label for="absHi">Red above (öre)</label></div><input id="absHi" type="number" step="5" value="200"></div>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="basis">Cheapest and most expensive of</label></div>
+          <select id="basis">
+            <option value="window">The whole period shown (the lamp)</option>
+            <option value="remaining">Only the time that is left</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="win">The strip shows</label></div>
+          <select id="win">
+            <option value="orig">Midnight to midnight (the lamp)</option>
+            <option value="rolling">From now to the last known price</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="agg">An LED covering several quarters shows</label></div>
+          <select id="agg">
+            <option value="mean">Their average (the lamp)</option>
+            <option value="max">The most expensive one</option>
+            <option value="min">The cheapest one</option>
+          </select>
+        </div>
+        <div class="ctl">
+          <div class="lab"><label for="gamma">Curve</label><output id="gammaOut"></output></div>
+          <input id="gamma" type="range" min="0.3" max="3" step="0.1" value="1">
+          <p class="help">1 is even. Above 1, more of the day is green and only the peaks are red.</p>
+        </div>
+        <div class="two">
+          <div class="ctl">
+            <div class="lab"><label for="steps">Color steps</label></div>
+            <select id="steps">
+              <option value="0">Smooth (the lamp)</option>
+              <option value="3">3</option>
+              <option value="4">4</option>
+              <option value="5">5</option>
+            </select>
+          </div>
+          <div class="ctl">
+            <div class="lab"><label for="palette">Colors</label></div>
+            <select id="palette">
+              <option value="orig">Green, yellow, red (the lamp)</option>
+              <option value="gyr">Pure green, yellow, red</option>
+              <option value="bluered">Blue to red</option>
+            </select>
+          </div>
+        </div>
+        <div class="btnrow"><button id="resetVar" type="button">Back to the lamp's scale</button></div>
+      </div>
+
+      <div>
+        <h3>Your own prices</h3>
+        <p class="help" style="margin-bottom:12px">For another date or to check the lamp against the source. Open the address in a new tab, select everything, copy it and paste it here. Tomorrow can be left empty.</p>
         <div class="two">
           <div class="ctl"><div class="lab"><label for="pDate">Date</label></div><input id="pDate" type="date"></div>
           <div class="ctl"><div class="lab"><label for="pArea">Price area</label></div>
             <select id="pArea"><option>SE1</option><option>SE2</option><option selected>SE3</option><option>SE4</option></select></div>
         </div>
-        <p class="url">Today: <a id="urlToday" target="_blank" rel="noopener"></a></p>
-        <p class="url">Tomorrow: <a id="urlTomorrow" target="_blank" rel="noopener"></a></p>
+        <p class="url">That day: <a id="urlToday" target="_blank" rel="noopener"></a></p>
+        <p class="url">The day after: <a id="urlTomorrow" target="_blank" rel="noopener"></a></p>
+        <div class="ctl"><div class="lab"><label for="jsonToday">Prices for that day</label></div><textarea id="jsonToday" placeholder='[{"SEK_per_kWh":0.53,"time_start":"…T00:00:00+01:00", …}]'></textarea></div>
+        <div class="ctl"><div class="lab"><label for="jsonTomorrow">Prices for the day after (optional)</label></div><textarea id="jsonTomorrow"></textarea></div>
+        <div class="btnrow"><button id="usePasted" type="button" class="primary">Use these prices</button></div>
+        <p class="msg" id="pasteMsg"></p>
       </div>
-      <div class="ctl"><div class="lab"><label for="jsonToday">Today's JSON</label></div><textarea id="jsonToday" placeholder='[{"SEK_per_kWh":0.53,"time_start":"…T00:00:00+01:00", …}]'></textarea></div>
-      <div class="ctl"><div class="lab"><label for="jsonTomorrow">Tomorrow's JSON (optional)</label></div><textarea id="jsonTomorrow"></textarea></div>
     </div>
-    <div class="btnrow"><button id="usePasted" type="button" class="primary">Use the pasted prices</button></div>
-    <p class="msg" id="pasteMsg"></p>
-  </section>
+  </details>
 
   <footer>
-    <p>Elpriser tillhandahålls av <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>. The real prices are fetched from there every hour by the project's GitHub workflow; they are spot prices excluding VAT, grid fees and tax.</p>
-    <p>Emulator and the normal-price color mode designed by <a href="https://github.com/sealjo">@sealjo</a>. The example days are made up but have a realistic shape. The emulator counts 96 quarters per day and ignores the 23- and 25-hour days at the daylight saving time changes; the lamp handles them. Colors follow the FastLED rainbow color wheel that the lamp uses.</p>
+    <p>Elpriser tillhandahålls av <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>. The real prices are fetched from there every hour. They are spot prices excluding VAT, grid fees and tax, so your electricity bill is higher.</p>
+    <p>The emulator and the <i>Compared with a normal price</i> color mode were designed by <a href="https://github.com/sealjo">@sealjo</a>. The example days are made up but have a realistic shape. The emulator always counts 96 quarters per day; on the two days a year when the clocks change, the lamp handles the 23- or 25-hour day correctly but the emulator doesn't.</p>
   </footer>
 </main>
 <div id="tip"></div>
@@ -336,6 +370,7 @@ const PAST = 0, NOW = 1, FUTURE = 2;
 const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Published every hour by .github/workflows/prices.yml (scripts/fetch-prices.sh)
 const PRICES_URL = "https://raw.githubusercontent.com/flysen/elpris-led/prices/prices.json";
+const TOMORROW_FROM = 13 * 60 + 30;   // the lamp starts looking for tomorrow's prices at 13:30
 
 /* ---------- FastLED equivalents ---------- */
 const scale8 = (i, s) => (i * (1 + s)) >> 8;
@@ -429,10 +464,10 @@ function showRealInfo() {
   if (!realPrices) { info.textContent = ""; return; }
   const area = realPrices.areas[$("realArea").value] || {};
   const updated = new Date(realPrices.updated);
-  const time = isNaN(updated) ? "" : "Updated " + updated.toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) + ". ";
-  const past = Object.keys(area).filter(d => d < localDate(0)).length;
-  info.innerHTML = time + (area[localDate(1)] ? "Tomorrow is published. " : "Tomorrow is not published yet. ") +
-    past + (past === 1 ? " past day" : " past days") + ' for the normal price. Prices from <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>.';
+  const time = isNaN(updated) ? "" : "Fetched " + updated.toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) + ". ";
+  info.textContent = time + (area[localDate(1)]
+    ? "Tomorrow's prices are published."
+    : "Tomorrow's prices are not published yet; they usually come after 13:00.");
 }
 function loadRealPrices() {
   const opt = $("scenario").querySelector('option[value="real"]');
@@ -441,7 +476,7 @@ function loadRealPrices() {
     .then(json => {
       realPrices = json;
       opt.disabled = false;
-      opt.textContent = "Real prices from elprisetjustnu.se";
+      opt.textContent = "Real prices, today and tomorrow";
       if (useRealPrices()) {
         // Real prices are the most useful start: show today as it is, at the real time
         $("scenario").value = "real";
@@ -470,7 +505,8 @@ function readS() {
     N: +$("leds").value, reverse: $("reverse").checked, pulseWhite: $("pulseWhite").checked, pastPct: +$("pastPct").value,
     applyBright: $("applyBright").checked, bday: +$("bday").value, bnight: +$("bnight").value,
     nstart: Math.min(23, Math.max(0, +$("nstart").value | 0)), nend: Math.min(23, Math.max(0, +$("nend").value | 0)),
-    perceptual: $("perceptual").checked, showVar: $("showVar").checked
+    perceptual: $("perceptual").checked, showVar: $("showVar").checked,
+    mode: $("colorMode").value, compare: $("compare").checked
   };
   S.V = {
     scale: $("scale").value, minspan: +$("minspan").value / 100, absLo: +$("absLo").value / 100, absHi: +$("absHi").value / 100,
@@ -478,26 +514,40 @@ function readS() {
     steps: +$("steps").value, palette: $("palette").value
   };
   S.P = {
-    show: $("showProp").checked, histDays: +$("histDays").value, normTomorrow: $("normTomorrow").checked,
+    histDays: +$("histDays").value, normTomorrow: $("normTomorrow").checked,
     dead: +$("dead").value / 100, extreme: +$("extreme").value / 100, levels: +$("levels").value, ticks: $("ticks").checked
   };
   const real = $("scenario").value === "real";
   $("realAreaBox").classList.toggle("hidden", !real);
-  $("reseed").classList.toggle("hidden", real);
+  $("reseedBox").classList.toggle("hidden", real || $("scenario").value === "pasted");
   if (real) showRealInfo();
+
+  // The lamp's color mode is shown first; the other one only when comparing
+  const normal = S.mode === "normal";
+  $("propBlock").style.order = normal ? 1 : 2;
+  $("origBlock").style.order = normal ? 2 : 1;
+  $("propBlock").classList.toggle("hidden", !normal && !S.compare);
+  $("origBlock").classList.toggle("hidden", normal && !S.compare);
+  $("variantBlock").style.order = 3;
+  $("variantBlock").classList.toggle("hidden", !S.showVar);
+  $("summary").style.order = 0;
+  $("normalSettings").classList.toggle("hidden", !normal);
+  $("colorModeHelp").textContent = normal
+    ? "Green when cheaper than usual, yellow when it doesn't matter, red when more expensive. The last three LEDs: one off, then tomorrow 08–17 and 17–24 compared with today."
+    : "Today, and tomorrow once published, from green (the cheapest time) to red (the most expensive) within that period.";
+
   $("histDaysOut").textContent = S.P.histDays + (S.P.histDays === 1 ? " day" : " days");
+  $("histHelp").textContent = !hist.length
+    ? "Your own prices have no past days, so the normal price is based on today and tomorrow only."
+    : "The normal price is the average of these days, today and, if ticked below, tomorrow." +
+      (real && hist.length < S.P.histDays ? " Only " + hist.length + " past days are available here." : "");
   $("deadOut").textContent = "±" + $("dead").value + " öre";
   $("extremeOut").textContent = "±" + $("extreme").value + " öre";
-  $("histHelp").textContent = hist.length
-    ? "The average of these days plus today and, if ticked below, tomorrow." + (real && hist.length < S.P.histDays ? " Only " + hist.length + " past days are available." : "")
-    : "Pasted prices have no history, so the normal price is based on today and tomorrow only.";
-  $("propBlock").classList.toggle("hidden", !S.P.show);
-  $("propDesc").textContent = "normal price " + S.P.histDays + (S.P.histDays === 1 ? " day" : " days") + " back, yellow within ±" + $("dead").value + " öre";
-  const sw = (lv, txt) => { const [r, g, b] = propBase(lv, S.P.levels); return `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:rgb(${r},${g},${b})"></span>${txt}</span>`; };
+  const sw = (lv, txt) => { const [r, g, b] = propBase(lv, S.P.levels); return `<span class="dot"><i style="background:rgb(${r},${g},${b})"></i>${txt}</span>`; };
   const keyHtml = S.P.levels === 5
-    ? sw(-2, "very cheap") + sw(-1, "cheap") + sw(0, "doesn't matter") + sw(1, "expensive") + sw(2, "very expensive")
-    : sw(-1, "cheap") + sw(0, "doesn't matter") + sw(1, "expensive");
-  if ($("propKey").innerHTML !== keyHtml) { $("propKey").innerHTML = keyHtml; $("propKey").style.flexWrap = "wrap"; $("propKey").style.fontFamily = "var(--body)"; }
+    ? sw(-2, "much cheaper") + sw(-1, "cheaper") + sw(0, "doesn't matter") + sw(1, "more expensive") + sw(2, "much more expensive")
+    : sw(-1, "cheaper") + sw(0, "doesn't matter") + sw(1, "more expensive");
+  if ($("propKey").innerHTML !== keyHtml) $("propKey").innerHTML = keyHtml;
   $("ledsOut").textContent = S.N;
   $("pastOut").textContent = S.pastPct + " %";
   $("bdayOut").textContent = S.bday;
@@ -507,24 +557,26 @@ function readS() {
   $("brightBox").classList.toggle("hidden", !S.applyBright);
   $("minspanBox").classList.toggle("hidden", S.V.scale !== "minspan");
   $("absBox").classList.toggle("hidden", S.V.scale !== "absolute");
-  $("variantBlock").classList.toggle("hidden", !S.showVar);
   $("time").disabled = S.live;
+  $("timeHelp").textContent = S.live
+    ? "Following the real time. Untick Use the real time to drag the clock or press Play."
+    : "Drag to see the strip at another time, or press Play to watch a day go by.";
   $("varDesc").textContent = describe(S.V);
 }
 const ORIGINAL = { scale: "relative", basis: "window", win: "orig", agg: "mean", gamma: 1, steps: 0, palette: "orig", minspan: 0.5, absLo: 0.3, absHi: 2 };
 function describe(V) {
   const p = [];
-  p.push({ relative: "relative scale", minspan: "minimum span " + Math.round(V.minspan * 100) + " öre", rank: "ranking", absolute: "fixed " + Math.round(V.absLo * 100) + "–" + Math.round(V.absHi * 100) + " öre" }[V.scale]);
+  p.push({ relative: "the lamp's scale", minspan: "minimum span " + Math.round(V.minspan * 100) + " öre", rank: "ranking", absolute: "fixed " + Math.round(V.absLo * 100) + "–" + Math.round(V.absHi * 100) + " öre" }[V.scale]);
   if (V.basis === "remaining") p.push("only the time that is left");
   if (V.win === "rolling") p.push("from now on");
   if (V.agg !== "mean") p.push(V.agg === "max" ? "most expensive quarter per LED" : "cheapest quarter per LED");
   if (V.gamma !== 1) p.push("curve " + V.gamma.toFixed(1));
-  if (V.steps) p.push(V.steps + " levels");
-  if (V.palette !== "orig") p.push(V.palette === "gyr" ? "green, yellow, red" : "blue to red");
+  if (V.steps) p.push(V.steps + " steps");
+  if (V.palette !== "orig") p.push(V.palette === "gyr" ? "pure green, yellow, red" : "blue to red");
   return p.join(", ");
 }
 
-/* ---------- Cheapest to most expensive (and its variants) ---------- */
+/* ---------- Cheapest to most expensive (and the experiments) ---------- */
 function paint(r, V) {
   if (V.palette === "bluered") return rainbow(Math.floor((1 - r) * 160));
   if (V.palette === "gyr") {
@@ -584,8 +636,11 @@ function compute(V, all, cur, N) {
 const ledState = (s0, s1, cur) => cur >= s1 ? PAST : cur >= s0 ? NOW : FUTURE;
 
 /* ---------- Compared with a normal price ---------- */
-const levelName = lv => LEVEL_NAME[S.P.levels === 3 ? Math.max(-1, Math.min(1, lv)) : lv];
-const LEVEL_NAME = { "-2": "very cheap", "-1": "cheap", "0": "doesn't matter", "1": "expensive", "2": "very expensive" };
+const clampLevel = lv => S.P.levels === 3 ? Math.max(-1, Math.min(1, lv)) : lv;
+const LEVEL_NAME = { "-2": "much cheaper than usual", "-1": "cheaper than usual", "0": "about as usual – it doesn't matter when you use power", "1": "more expensive than usual", "2": "much more expensive than usual" };
+const levelName = lv => LEVEL_NAME[clampLevel(lv)];
+const CMP_NAME = { "-2": "much cheaper than today", "-1": "cheaper than today", "0": "about the same as today", "1": "more expensive than today", "2": "much more expensive than today" };
+const cmpName = lv => CMP_NAME[clampLevel(lv)];
 // Color per level, along the same color wheel as the other mode (levelHue() in elpris_logic.h)
 function propBase(level, levels) {
   if (levels === 3) return rainbow([96, 64, 0][Math.max(-1, Math.min(1, level)) + 1]);
@@ -613,26 +668,24 @@ function computeProposal(minute, tmr, N, P) {
     leds.push({ s0, s1, price, level: levelOf(price), tick });
   }
   // One off LED, then tomorrow day and tomorrow evening compared with the same hours today
-  leds.push({ s0: FAR, s1: FAR + 1, off: true, info: "Off LED before tomorrow" });
+  leds.push({ s0: FAR, s1: FAR + 1, off: true, info: "Always off: separates today from tomorrow" });
   const periods = [];
-  for (const [name, a, b] of [["day", 32, 68], ["evening", 68, 96]]) {
+  for (const [name, a, b] of [["daytime", 32, 68], ["evening", 68, 96]]) {
     const td = mean(days[0].slice(a, b));
     const tm = tmr ? mean(days[1].slice(a, b)) : null;
     const level = tmr ? levelOfDiff(tm - td) : null;
     periods.push({ name, a, b, td, tm, level });
     const span = pad(a / 4) + "–" + pad(b / 4);
     const info = tmr
-      ? `Tomorrow ${name} ${span}: ${ore(tm)}\nToday ${span}: ${ore(td)}\n${(tm - td >= 0 ? "+" : "") + Math.round((tm - td) * 100)} öre, ${cmpName(level)}`
-      : `Tomorrow ${name} ${span}\nThe prices are not published yet`;
+      ? `Tomorrow ${span}: average ${ore(tm)}\nToday ${span}: average ${ore(td)}\n${signedOre(tm - td)}, ${cmpName(level)}`
+      : `Tomorrow ${span}\nOff until tomorrow's prices are shown`;
     leds.push({ s0: FAR, s1: FAR + 1, off: !tmr, cmp: true, level, info });
   }
   return {
-    kind: "prop", V: { scale: "prop" }, start: 0, len: L, frac: M / N, endLabel: "day · evening tomorrow",
+    kind: "prop", V: { scale: "prop" }, start: 0, len: L, frac: M / N, endLabel: "tomorrow 08–17 · 17–24",
     curRel: cur, leds, normal, hd, P, periods, colorOf: p => propBase(levelOf(p), P.levels)
   };
 }
-const CMP_NAME = { "-2": "much cheaper", "-1": "cheaper", "0": "about the same as today", "1": "more expensive", "2": "much more expensive" };
-const cmpName = lv => CMP_NAME[S.P.levels === 3 ? Math.max(-1, Math.min(1, lv)) : lv];
 function shadeProp(led, t, night, curRel) {
   if (led.off) return [0, 0, 0];
   const st = ledState(led.s0, led.s1, curRel);
@@ -643,6 +696,7 @@ const shadePlain = (led, t, night, curRel) => shade(led.rgb, ledState(led.s0, le
 
 /* ---------- Helpers ---------- */
 const ore = p => Math.round(p * 100) + " öre";
+const signedOre = d => (d >= 0 ? "+" : "−") + Math.abs(Math.round(d * 100)) + " öre";
 const pad = n => String(n).padStart(2, "0");
 function fmtMin(m, isEnd) {
   const d = Math.floor(m / 1440), r = m % 1440;
@@ -688,19 +742,18 @@ function drawStrip(canvas, res, t, night, shadeFn) {
     ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
+  // Times under the strip: midnight at the cable end (left), the end of the period on the right
   ctx.font = "11px 'IBM Plex Mono', monospace"; ctx.fillStyle = "#8a93a3"; ctx.textBaseline = "top";
-  const startTxt = fmtMin(res.start * 15), endTxt = fmtMin((res.start + res.len) * 15, true);
-  const lastTxt = res.endLabel || endTxt;
-  const leftTxt = S.reverse ? lastTxt : startTxt, rightTxt = S.reverse ? startTxt : lastTxt;
-  ctx.textAlign = "left"; ctx.fillText("DIN ▸ " + leftTxt, 2, top + sh + 6);
+  const startTxt = fmtMin(res.start * 15), endTxt = res.endLabel || fmtMin((res.start + res.len) * 15, true);
+  const leftTxt = S.reverse ? endTxt : startTxt, rightTxt = S.reverse ? startTxt : endTxt;
+  ctx.textAlign = "left"; ctx.fillText("cable · " + leftTxt, 2, top + sh + 6);
   ctx.textAlign = "right"; ctx.fillText(rightTxt, w - 2, top + sh + 6);
-  // Clock times every six hours under the strip, so it is easy to see where in the day each part is
   ctx.textAlign = "center"; ctx.strokeStyle = "#4a5466"; ctx.lineWidth = 1;
   for (let k = 1; k < res.len; k++) {
     const abs = res.start + k;
     if (abs % 24 !== 0) continue;
     const xt = k / res.len * w * (res.frac || 1), x = S.reverse ? w - xt : xt;
-    if (x < 70 || x > w - 70) continue;
+    if (x < 90 || x > w - 90) continue;
     ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, top + sh + 1); ctx.lineTo(Math.round(x) + 0.5, top + sh + 5); ctx.stroke();
     ctx.fillText(abs % 96 === 0 ? "00" : pad((abs % 96) / 4), x, top + sh + 6);
   }
@@ -709,7 +762,7 @@ function drawLegend(canvas, res) {
   const ctx = canvas.getContext("2d"), w = canvas.width, h = canvas.height;
   for (let x = 0; x < w; x++) {
     const r = x / (w - 1);
-    const q = res.V.steps > 1 ? Math.round(Math.pow(r, 1) * (res.V.steps - 1)) / (res.V.steps - 1) : r;
+    const q = res.V.steps > 1 ? Math.round(r * (res.V.steps - 1)) / (res.V.steps - 1) : r;
     const [cr, cg, cb] = paint(q, res.V);
     ctx.fillStyle = `rgb(${cr},${cg},${cb})`; ctx.fillRect(x, 0, 1, h);
   }
@@ -754,7 +807,7 @@ function drawChart(all, res, minute) {
   if (res.kind === "prop") {
     const a = Math.min(hi, res.normal + res.P.dead), b = Math.max(lo, res.normal - res.P.dead);
     ctx.fillStyle = "rgba(230,220,90,0.10)"; ctx.fillRect(padL, y(a), cw, y(b) - y(a));
-    dashed(res.normal, "normal price " + ore(res.normal) + ", yellow within ±" + Math.round(res.P.dead * 100) + " öre", true);
+    dashed(res.normal, "normal price " + ore(res.normal) + " (yellow band: doesn't matter)", true);
     ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
     for (const q of res.periods) {
       for (const [off, v] of [[0, q.td], [96, q.tm]]) {
@@ -762,7 +815,7 @@ function drawChart(all, res, minute) {
         const yy = y(v), x0 = padL + (off + q.a) * bw, x1 = padL + (off + q.b) * bw;
         ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke();
         ctx.fillStyle = "#ffffff"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-        ctx.fillText("avg " + ore(v), x0 + 2, yy - 2);
+        ctx.fillText("average " + ore(v), x0 + 2, yy - 2);
       }
     }
     ctx.lineWidth = 1;
@@ -779,11 +832,39 @@ function drawChart(all, res, minute) {
   chartGeom = { padL, bw, L };
 }
 
+/* ---------- Summary in plain words ---------- */
+function summary(st) {
+  const p = st.all[st.cur];
+  const lines = [];
+  if (S.mode === "normal") {
+    const lv = st.prop.leds.find(l => !l.off && !l.cmp && ledState(l.s0, l.s1, st.prop.curRel) === NOW);
+    lines.push(`<div class="now">Now, ${fmtMin(st.minute)}: ${ore(p)}/kWh – ${lv ? levelName(lv.level) : ""}</div>`);
+    lines.push(`<div class="sub">Normal price ${ore(st.prop.normal)}, the average of ${st.prop.hd ? st.prop.hd + (st.prop.hd === 1 ? " past day, " : " past days, ") : ""}today${st.tmr && S.P.normTomorrow ? " and tomorrow" : ""}.</div>`);
+  } else {
+    lines.push(`<div class="now">Now, ${fmtMin(st.minute)}: ${ore(p)}/kWh</div>`);
+  }
+  // The cheapest quarter left in what the strip shows
+  let best = -1;
+  for (let s = st.cur; s < st.all.length; s++) if (best < 0 || st.all[s] < st.all[best]) best = s;
+  if (best >= 0) lines.push(`<div>Cheapest time left: ${fmtMin(best * 15)}, ${ore(st.all[best])}/kWh.</div>`);
+  if (st.tmr) {
+    if (S.mode === "normal") {
+      const [d, e] = st.prop.periods;
+      lines.push(`<div>Tomorrow 08–17: ${cmpName(d.level)} (${signedOre(d.tm - d.td)}). Tomorrow 17–24: ${cmpName(e.level)} (${signedOre(e.tm - e.td)}).</div>`);
+    }
+  } else if (days[1] && S.tomorrow === "auto") {
+    lines.push(`<div class="sub">Tomorrow's prices are published. The lamp shows them from 13:30.</div>`);
+  } else if (!days[1]) {
+    lines.push(`<div class="sub">Tomorrow's prices are not published yet; they usually come after 13:00.</div>`);
+  }
+  return lines.join("");
+}
+
 /* ---------- Main loop ---------- */
 let playing = false, lastT = performance.now(), chartGeom = null, last = {};
 function state() {
   const minute = Math.floor(S.minute);
-  const tmr = days[1] && (S.tomorrow === "always" || (S.tomorrow === "auto" && minute >= 13 * 60 + 30));
+  const tmr = !!days[1] && (S.tomorrow === "always" || (S.tomorrow === "auto" && minute >= TOMORROW_FROM));
   const all = tmr ? days[0].concat(days[1]) : days[0].slice();
   const cur = Math.floor(minute / 15);
   return {
@@ -791,28 +872,19 @@ function state() {
     prop: computeProposal(minute, tmr, S.N, S.P)
   };
 }
-function readout(st) {
-  const p = st.all[st.cur], o = st.orig;
-  const nowLed = o.leds.findIndex(l => ledState(l.s0, l.s1, o.curRel) === NOW);
+function techReadout(st) {
+  const res = S.mode === "normal" ? st.prop : st.orig;
+  const nowLed = res.leds.findIndex(l => !l.off && !l.cmp && ledState(l.s0, l.s1, res.curRel) === NOW);
   const phys = S.reverse ? S.N - 1 - nowLed : nowLed;
-  const per = (o.len / S.N);
-  const night = isNightHour(Math.floor(st.minute / 60), S.nstart, S.nend);
+  const dayLeds = S.mode === "normal" ? Math.max(1, S.N - 3) : S.N;
   const tiles = [
-    ["Clock", fmtMin(st.minute) + (S.applyBright && night ? " night" : "")],
-    ["Price now", ore(p)],
-    ["Cheapest–most expensive in window", ore(o.mn) + " – " + ore(o.mx)],
-    ["Window (cheapest to most expensive)", o.len + " quarters" + (o.len > 96 ? " (two days)" : " (today)")],
-    ["Quarters per LED", per.toFixed(2)],
-    ["Current LED, physical position", "no. " + (phys + 1) + " of " + S.N]
+    ["LED for now, counted from the cable", "no. " + (phys + 1) + " of " + S.N],
+    ["Quarters per LED", (res.len / dayLeds).toFixed(2)],
+    ["Period on the strip", res.len > 96 ? "today and tomorrow" : "today"],
+    ["Cheapest – most expensive", ore(st.orig.mn) + " – " + ore(st.orig.mx)]
   ];
-  if (S.P.show) {
-    const lv = st.prop.leds.find(l => !l.off && !l.cmp && ledState(l.s0, l.s1, st.prop.curRel) === NOW);
-    const pr = st.prop.periods.map(q => q.tm == null ? "–" : cmpName(q.level));
-    tiles.splice(2, 0, ["Normal price", ore(st.prop.normal)], ["Right now", lv ? levelName(lv.level) : "–"],
-      ["Tomorrow day 08–17", pr[0]], ["Tomorrow evening 17–24", pr[1]]);
-  }
   const html = tiles.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
-  if (html !== last.readout) { $("readout").innerHTML = html; last.readout = html; }
+  if (html !== last.tech) { $("techReadout").innerHTML = html; last.tech = html; }
 }
 function frame(t) {
   const dt = (t - lastT) / 1000; lastT = t;
@@ -826,8 +898,8 @@ function frame(t) {
   $("timeOut").textContent = fmtMin(Math.floor(S.minute));
   const st = state();
   const night = isNightHour(Math.floor(st.minute / 60), S.nstart, S.nend);
-  drawStrip($("stripOrig"), st.orig, t, night, shadePlain);
-  if (S.P.show) drawStrip($("stripProp"), st.prop, t, night, shadeProp);
+  if (S.mode === "normal" || S.compare) drawStrip($("stripProp"), st.prop, t, night, shadeProp);
+  if (S.mode === "range" || S.compare) drawStrip($("stripOrig"), st.orig, t, night, shadePlain);
   if (S.showVar) drawStrip($("stripVar"), st.vari, t, night, shadePlain);
   const key = JSON.stringify([S.V, st.cur, st.all.length, S.N, seed, $("scenario").value, $("realArea").value]);
   if (key !== last.legend) {
@@ -836,44 +908,53 @@ function frame(t) {
     $("lgVarLo").textContent = st.vari.lgLo; $("lgVarHi").textContent = st.vari.lgHi;
     last.legend = key;
   }
-  drawChart(st.all, S.P.show ? st.prop : S.showVar ? st.vari : st.orig, S.minute);
-  readout(st);
+  drawChart(st.all, S.mode === "normal" ? st.prop : st.orig, S.minute);
+  const sum = summary(st);
+  if (sum !== last.summary) { $("summary").innerHTML = sum; last.summary = sum; }
+  techReadout(st);
   last.st = st;
   requestAnimationFrame(frame);
 }
 
-/* ---------- Mouse pointer ---------- */
+/* ---------- Details on hover, or on tap on a phone ---------- */
 const tip = $("tip");
-function showTip(e, text) { tip.textContent = text; tip.style.display = "block"; tip.style.left = (e.clientX + 14) + "px"; tip.style.top = (e.clientY + 14) + "px"; }
-function hideTip() { tip.style.display = "none"; }
-function stripHover(canvas, which) {
-  canvas.addEventListener("mousemove", e => {
-    const st = last.st; if (!st) return;
-    const res = st[which], N = res.leds.length, rect = canvas.getBoundingClientRect();
-    const j = Math.min(N - 1, Math.max(0, Math.floor((e.clientX - rect.left) / rect.width * N)));
-    const i = S.reverse ? N - 1 - j : j, led = res.leds[i];
-    const a = (res.start + led.s0) * 15, b = (res.start + led.s1) * 15;
-    if (led.info) { showTip(e, `LED ${j + 1} (physical)\n` + led.info); return; }
-    const extra = led.tick ? "\nclock time marker" : (led.level != null ? "\n" + levelName(led.level) : "");
-    showTip(e, `LED ${j + 1} (physical)\n${fmtMin(a)} – ${fmtMin(b, true)}\n${led.s1 - led.s0} quarter${led.s1 - led.s0 > 1 ? "s" : ""}, ${led.price == null ? "no price yet" : ore(led.price)}${extra}`);
-  });
-  canvas.addEventListener("mouseleave", hideTip);
+let tipTimer = null;
+function showTip(e, text, autoHide) {
+  tip.textContent = text; tip.style.display = "block";
+  const x = Math.min(e.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+  tip.style.left = Math.max(8, x) + "px"; tip.style.top = (e.clientY + 14) + "px";
+  clearTimeout(tipTimer);
+  if (autoHide) tipTimer = setTimeout(hideTip, 4000);
 }
-stripHover($("stripProp"), "prop");
-stripHover($("stripOrig"), "orig");
-stripHover($("stripVar"), "vari");
-$("chart").addEventListener("mousemove", e => {
-  const st = last.st; if (!st || !chartGeom) return;
+function hideTip() { tip.style.display = "none"; }
+function stripText(canvas, which, e) {
+  const st = last.st; if (!st) return null;
+  const res = st[which], N = res.leds.length, rect = canvas.getBoundingClientRect();
+  const j = Math.min(N - 1, Math.max(0, Math.floor((e.clientX - rect.left) / rect.width * N)));
+  const i = S.reverse ? N - 1 - j : j, led = res.leds[i];
+  if (led.info) return `LED ${j + 1} from the cable\n` + led.info;
+  const a = (res.start + led.s0) * 15, b = (res.start + led.s1) * 15;
+  const extra = led.tick ? "\nclock time marker" : (led.level != null ? "\n" + levelName(led.level) : "");
+  return `LED ${j + 1} from the cable\n${fmtMin(a)} – ${fmtMin(b, true)}\n${led.price == null ? "no price yet" : "average " + ore(led.price) + "/kWh"}${extra}`;
+}
+function chartText(e) {
+  const st = last.st; if (!st || !chartGeom) return null;
   const rect = $("chart").getBoundingClientRect();
   const s = Math.floor((e.clientX - rect.left - chartGeom.padL) / chartGeom.bw);
-  if (s < 0 || s >= chartGeom.L) { hideTip(); return; }
-  const oi = st.orig.leds.findIndex(l => s >= l.s0 && s < l.s1);
-  const phys = S.reverse ? S.N - 1 - oi : oi;
-  showTip(e, `${fmtMin(s * 15)} – ${fmtMin((s + 1) * 15, true)}\n${ore(st.all[s])} (${st.all[s].toFixed(3)} SEK/kWh)\nshown on LED ${phys + 1} (cheapest to most expensive)`);
-});
-$("chart").addEventListener("mouseleave", hideTip);
+  if (s < 0 || s >= chartGeom.L) return null;
+  return `${fmtMin(s * 15)} – ${fmtMin((s + 1) * 15, true)}\n${ore(st.all[s])}/kWh (${st.all[s].toFixed(3)} SEK/kWh)`;
+}
+function hover(el, textFn) {
+  el.addEventListener("mousemove", e => { const t = textFn(e); if (t) showTip(e, t, false); else hideTip(); });
+  el.addEventListener("mouseleave", hideTip);
+  el.addEventListener("pointerdown", e => { if (e.pointerType === "mouse") return; const t = textFn(e); if (t) showTip(e, t, true); });
+}
+hover($("stripProp"), e => stripText($("stripProp"), "prop", e));
+hover($("stripOrig"), e => stripText($("stripOrig"), "orig", e));
+hover($("stripVar"), e => stripText($("stripVar"), "vari", e));
+hover($("chart"), chartText);
 
-/* ---------- Pasted prices ---------- */
+/* ---------- Your own prices ---------- */
 function parseDay(text) {
   const arr = JSON.parse(text);
   if (!Array.isArray(arr) || !arr.length) throw new Error("What was pasted is not a list of prices.");
@@ -888,7 +969,7 @@ function parseDay(text) {
     for (let k = 0; k < dur && s + k < SLOTS; k++) out[s + k] = e.SEK_per_kWh;
   }
   const first = out.find(v => v !== null);
-  if (first === undefined) throw new Error("Found no fields with SEK_per_kWh and time_start.");
+  if (first === undefined) throw new Error("Found no prices (SEK_per_kWh and time_start) in it.");
   let prev = first;
   for (let i = 0; i < SLOTS; i++) { if (out[i] === null) out[i] = prev; prev = out[i]; }
   return out;
@@ -908,9 +989,9 @@ $("usePasted").addEventListener("click", () => {
     pasted = [a, b];
     const opt = $("scenario").querySelector('option[value="pasted"]'); opt.disabled = false;
     $("scenario").value = "pasted"; regen(); readS();
-    msg.className = "msg ok"; msg.textContent = "The prices are now used" + (b ? " for today and tomorrow." : " for today. Tomorrow is missing.");
+    msg.className = "msg ok"; msg.textContent = "Your prices are shown now" + (b ? ", for both days." : ". The day after is missing.");
   } catch (err) {
-    msg.className = "msg err"; msg.textContent = "Could not read the prices: " + err.message + " Copy the whole page from the address, from [ to ].";
+    msg.className = "msg err"; msg.textContent = "Could not read the prices: " + err.message + " Copy the whole page, from [ to ].";
   }
 });
 
@@ -918,10 +999,7 @@ $("usePasted").addEventListener("click", () => {
 document.querySelectorAll("input, select").forEach(el => el.addEventListener("input", () => { readS(); }));
 $("scenario").addEventListener("change", () => { regen(); readS(); });
 $("realArea").addEventListener("change", () => { regen(); readS(); });
-$("reseed").addEventListener("click", () => {
-  if ($("scenario").value === "pasted" || $("scenario").value === "real") $("scenario").value = "winter";
-  seed++; regen(); readS();
-});
+$("reseed").addEventListener("click", () => { seed++; regen(); readS(); });
 $("play").addEventListener("click", () => {
   playing = !playing; $("play").textContent = playing ? "Pause" : "Play";
   if (playing && $("live").checked) { $("live").checked = false; readS(); }

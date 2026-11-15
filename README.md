@@ -1,8 +1,8 @@
 # Elpris-LED
 
-An ESP32 or ESP8266 and a WS2812B LED strip that show the day's Swedish spot electricity prices as colors: green when it's a good time to use power, yellow when it doesn't matter, red when it's expensive. Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se).
+An ESP32 or ESP8266 and a WS2812B LED strip that show the day's Swedish spot electricity prices as colors: green when it's a good time to use power, yellow when it doesn't matter, red when it's expensive. Prices are provided by [Elpriset just nu.se](https://www.elprisetjustnu.se).
 
-What's new in each version: see [CHANGELOG.md](CHANGELOG.md). Try it without a lamp in the [emulator](https://flysen.github.io/elpris-led/emulator/).
+What's new in each version: see [CHANGELOG.md](CHANGELOG.md). Try it without a lamp, on today's real prices, in the [emulator](https://flysen.github.io/elpris-led/emulator/).
 
 ## Getting started
 
@@ -91,7 +91,7 @@ Try both modes, and all the settings, in the [emulator](https://flysen.github.io
 | OTA password | Turns on updates from the Arduino IDE; empty means off |
 | Config portal password | Protects the *Elpris-LED-Config* wifi that opens when the lamp can't reach your network |
 
-All prices are spot prices excluding VAT, grid fees and energy tax.
+All prices are spot prices excluding VAT, grid fees and energy tax. They come from ENTSO-E in euro, converted to SEK by Elpriset just nu.se, so they can differ slightly from your electricity supplier's figures.
 
 ## Features
 
@@ -104,7 +104,7 @@ All prices are spot prices excluding VAT, grid fees and energy tax.
 - Updates itself: new releases are found within six hours and installed automatically, for each board type. Testers can opt in to release candidates.
 - Few API calls; cached prices are used if fetching fails, with automatic retries. A day only counts as fetched when all of it arrived, and the web UI shows the reason when fetching fails.
 - OTA updates and a config portal password, both set in the web UI. No passwords in the code.
-- An emulator for trying the color modes and settings in a browser.
+- An emulator for trying the color modes and settings in a browser, on today's real prices.
 
 ## Status colors
 
@@ -155,7 +155,11 @@ Builds you compile yourself, and CI builds, report version `dev` and never updat
 
 ## Emulator
 
-[flysen.github.io/elpris-led/emulator](https://flysen.github.io/elpris-led/emulator/) (source: `docs/emulator/index.html`) runs the lamp's color logic in the browser: both color modes, tomorrow's LEDs, dimming, the white pulse, reverse direction and night mode, on example days or on real prices you paste in. It is published together with the install page at every stable release. To see the version on `main` before that, open [raw.githack.com/flysen/elpris-led/main/docs/emulator/index.html](https://raw.githack.com/flysen/elpris-led/main/docs/emulator/index.html).
+[flysen.github.io/elpris-led/emulator](https://flysen.github.io/elpris-led/emulator/) (source: `docs/emulator/index.html`) runs the lamp's color logic in the browser: both color modes, tomorrow's LEDs, dimming, the white pulse, reverse direction and night mode. It opens on **today's real prices** for the chosen price area, at the real time of day; example days and pasting prices yourself are also there. It is published together with the install page at every stable release. To see the version on `main` before that, open [raw.githack.com/flysen/elpris-led/main/docs/emulator/index.html](https://raw.githack.com/flysen/elpris-led/main/docs/emulator/index.html).
+
+**Where the real prices come from:** a browser page can't fetch prices from elprisetjustnu.se directly, so a scheduled GitHub workflow, `.github/workflows/prices.yml`, runs `scripts/fetch-prices.sh` every hour. It fetches today, tomorrow (once published) and the last three days for SE1–SE4 and publishes them as one small file, `prices.json`, on the branch `prices`. The emulator reads it from [raw.githubusercontent.com/flysen/elpris-led/prices/prices.json](https://raw.githubusercontent.com/flysen/elpris-led/prices/prices.json). The branch always has a single commit, so it doesn't grow. If the file can't be read, the emulator uses the example days. The lamps don't use this file; they fetch their own prices.
+
+GitHub pauses scheduled workflows after 60 days without activity in the repository and sends an e-mail about it; *Enable workflow* in the Actions tab starts it again. The workflow can also be run by hand there (*Run workflow*).
 
 The emulator repeats the lamp's logic in JavaScript, so when what the strip shows changes, the emulator must be updated in the same pull request (it's on the checklist).
 
@@ -207,6 +211,8 @@ Dependabot opens pull requests when the GitHub Actions used here get new version
 
 New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, emulator, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout. Bigger changes to what the strip shows are best described in a design document under `docs/` first, like [docs/normal-price-mode.md](docs/normal-price-mode.md). New features are developed for ESP32; on ESP8266, check that the free memory before a price fetch (shown in the web UI) doesn't go down.
 
+Changes to the files in `.github/workflows/` need GitHub's *workflow* permission, which some tools and integrations don't have; such changes may have to be made by hand in the browser.
+
 ## Releases (for maintainers)
 
 Pushing a version tag checks the tag, runs the tests, builds the firmware for both boards with that version number, publishes a release with `-full.bin` and `-ota.bin` per board plus `SHA256SUMS`, and updates the install page and the emulator. Lamps in the field pick up the new version from the install page within six hours.
@@ -237,10 +243,11 @@ One-time repository setup before the first release:
 
 1. *Settings → Pages*: set *Source* to *GitHub Actions*.
 2. *Settings → Environments → github-pages*: allow tags matching `v*` under deployment branches and tags. Otherwise the deploy is blocked because it runs from a tag.
-3. *Settings → Rules → Rulesets*: protect `main` and require the CI checks *tests*, *lint* and *firmware* to pass before merging.
+3. *Settings → Rules → Rulesets*: protect `main` and require the CI checks *tests*, *lint* and *firmware* to pass before merging. Leave the `prices` branch unprotected, so the prices workflow can replace it every hour.
 
 ## Credits
 
+- Prices are provided by [Elpriset just nu.se](https://www.elprisetjustnu.se).
 - The **normal-price color mode** and the **emulator** were designed and built by [@sealjo](https://github.com/sealjo). The design is in [docs/normal-price-mode.md](docs/normal-price-mode.md), translated from his [original proposal](https://github.com/sealjo/elpris-led/blob/emulator/docs/emulator-forslag/FORSLAG.md).
 
 ## License

@@ -1,0 +1,35 @@
+# Every pull request has test cases (see AGENTS.md). This check fails until the pull request description
+# lists at least one test case under "## Test cases" and all of them are ticked. It runs again when the
+# description is edited, so ticking a box is enough.
+name: Test cases
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  test-cases:
+    if: github.actor != 'dependabot[bot]'   # Dependabot's pull requests don't use the template
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the test cases in the description
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # The "## Test cases" section, without the template's comment
+          section=$(printf '%s\n' "$BODY" | tr -d '\r' | awk '/^## Test cases/{f=1; next} /^## /{f=0} f' | sed '/<!--/,/-->/d')
+          total=$(grep -cE '^\s*- \[[ xX]\] +\S' <<<"$section" || true)
+          open=$(grep -E '^\s*- \[ \] +\S' <<<"$section" || true)
+          if [ "$total" -eq 0 ]; then
+            echo "::error::No test cases. List them under '## Test cases' in the description (see AGENTS.md)."
+            exit 1
+          fi
+          if [ -n "$open" ]; then
+            echo "::error::Not all test cases are ticked yet:"
+            printf '%s\n' "$open"
+            exit 1
+          fi
+          echo "All $total test cases are ticked."

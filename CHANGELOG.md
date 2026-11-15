@@ -4,6 +4,13 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+## v4.0.4
+
+- **The emulator is easier to read:** a summary in plain words at the top (the price now, whether it's cheaper or more expensive than usual, the cheapest time left, and how tomorrow compares with today), the lamp's settings with the same names as on the lamp's own page, and a chart with a title and units.
+- The emulator shows the color mode chosen under *Colors*, like the lamp. Comparing both modes, the experiments with other color scales, your own prices and the technical details are under *Advanced*.
+- Tap an LED or the chart on a phone to see its details.
+- No change in the lamps' firmware.
+
 ## v4.0.3
 
 - **The emulator shows real prices:** today's, tomorrow's (once published) and the last three days' prices for SE1–SE4, updated every hour, at the real time of day. The example days and pasting prices yourself are still there. Prices provided by [Elpriset just nu.se](https://www.elprisetjustnu.se).

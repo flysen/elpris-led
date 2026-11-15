@@ -1,0 +1,53 @@
+# Fetches today's, tomorrow's and the last three days' spot prices for SE1-SE4 every hour and publishes them as
+# prices.json on the branch "prices", where the emulator reads them:
+# https://raw.githubusercontent.com/flysen/elpris-led/prices/prices.json
+#
+# The branch always has a single commit, so it doesn't grow. Lamps don't use this file; they fetch their own
+# prices from elprisetjustnu.se.
+name: Prices for the emulator
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # every hour (UTC); tomorrow's prices usually arrive from 13:00 Swedish time
+  workflow_dispatch:       # "Run workflow" in the Actions tab, e.g. right after merging
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prices
+  cancel-in-progress: false
+
+jobs:
+  prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Fetch prices
+        run: bash scripts/fetch-prices.sh > prices.json
+
+      - name: Publish to the prices branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir pub
+          cp prices.json pub/
+          cd pub
+          git init -q -b prices
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prices.json
+          git commit -q -m "Prices updated $(date -u +%FT%TZ)"
+          git push -q --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" prices
+
+      - name: Summary
+        run: |
+          {
+            echo "### Prices for the emulator"
+            echo
+            jq -r '"Updated " + .updated' prices.json
+            echo
+            jq -r '.areas | to_entries[] | "- " + .key + ": " + (.value | keys | join(", "))' prices.json
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -29,7 +29,8 @@ h3 { font-family: var(--display); font-weight: 500; font-size: 14px; margin: 18p
 header p { margin: 4px 0 0; color: var(--muted); max-width: 72ch; }
 a { color: var(--accent); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
-.stage { display: flex; flex-direction: column; gap: 14px; }
+.stage { display: grid; gap: 14px; }
+.strips { display: flex; flex-direction: column; gap: 14px; }
 .summary { display: grid; gap: 4px; font-size: 17px; }
 .summary .now { font-size: 20px; font-weight: 600; }
 .summary .sub { color: var(--muted); font-size: 14px; }
@@ -98,29 +99,31 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
   <section class="card stage" aria-label="What the lamp shows">
     <div class="summary" id="summary" aria-live="polite"></div>
 
-    <div id="propBlock">
-      <div class="strip-head">
-        <span class="name">Compared with a normal price</span>
-        <div class="legend" id="propKey"></div>
+    <div class="strips">
+      <div id="propBlock">
+        <div class="strip-head">
+          <span class="name">Compared with a normal price</span>
+          <div class="legend" id="propKey"></div>
+        </div>
+        <canvas id="stripProp" class="strip" aria-label="The LED strip, compared with a normal price"></canvas>
       </div>
-      <canvas id="stripProp" class="strip" aria-label="The LED strip, compared with a normal price"></canvas>
-    </div>
 
-    <div id="origBlock">
-      <div class="strip-head">
-        <span class="name">Cheapest to most expensive</span>
-        <div class="legend"><span id="lgOrigLo"></span><canvas id="lgOrig" width="300" height="20"></canvas><span id="lgOrigHi"></span></div>
+      <div id="origBlock">
+        <div class="strip-head">
+          <span class="name">Cheapest to most expensive</span>
+          <div class="legend"><span id="lgOrigLo"></span><canvas id="lgOrig" width="300" height="20"></canvas><span id="lgOrigHi"></span></div>
+        </div>
+        <canvas id="stripOrig" class="strip" aria-label="The LED strip, cheapest to most expensive"></canvas>
       </div>
-      <canvas id="stripOrig" class="strip" aria-label="The LED strip, cheapest to most expensive"></canvas>
-    </div>
 
-    <div id="variantBlock" class="hidden">
-      <div class="strip-head">
-        <span class="name">Experiment</span>
-        <span class="chip" id="varDesc"></span>
-        <div class="legend"><span id="lgVarLo"></span><canvas id="lgVar" width="300" height="20"></canvas><span id="lgVarHi"></span></div>
+      <div id="variantBlock" class="hidden">
+        <div class="strip-head">
+          <span class="name">Experiment</span>
+          <span class="chip" id="varDesc"></span>
+          <div class="legend"><span id="lgVarLo"></span><canvas id="lgVar" width="300" height="20"></canvas><span id="lgVarHi"></span></div>
+        </div>
+        <canvas id="stripVar" class="strip" aria-label="Experimental color scale"></canvas>
       </div>
-      <canvas id="stripVar" class="strip" aria-label="Experimental color scale"></canvas>
     </div>
 
     <p class="help">Hover over an LED or the chart, or tap it on a phone, for details. Midnight is at the cable end of the strip, on the left here.</p>
@@ -338,7 +341,7 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
 
       <div>
         <h3>Your own prices</h3>
-        <p class="help" style="margin-bottom:12px">For another date or to check the lamp against the source. Open the address in a new tab, select everything, copy it and paste it here. Tomorrow can be left empty.</p>
+        <p class="help" style="margin-bottom:12px">For another date or to check the lamp against the source. Open the address in a new tab, select everything, copy it and paste it here. The day after can be left empty.</p>
         <div class="two">
           <div class="ctl"><div class="lab"><label for="pDate">Date</label></div><input id="pDate" type="date"></div>
           <div class="ctl"><div class="lab"><label for="pArea">Price area</label></div>
@@ -526,11 +529,10 @@ function readS() {
   const normal = S.mode === "normal";
   $("propBlock").style.order = normal ? 1 : 2;
   $("origBlock").style.order = normal ? 2 : 1;
+  $("variantBlock").style.order = 3;
   $("propBlock").classList.toggle("hidden", !normal && !S.compare);
   $("origBlock").classList.toggle("hidden", normal && !S.compare);
-  $("variantBlock").style.order = 3;
   $("variantBlock").classList.toggle("hidden", !S.showVar);
-  $("summary").style.order = 0;
   $("normalSettings").classList.toggle("hidden", !normal);
   $("colorModeHelp").textContent = normal
     ? "Green when cheaper than usual, yellow when it doesn't matter, red when more expensive. The last three LEDs: one off, then tomorrow 08–17 and 17–24 compared with today."
@@ -667,7 +669,7 @@ function computeProposal(minute, tmr, N, P) {
     const price = mean(days[0].slice(s0, s1));
     leds.push({ s0, s1, price, level: levelOf(price), tick });
   }
-  // One off LED, then tomorrow day and tomorrow evening compared with the same hours today
+  // One off LED, then tomorrow daytime and tomorrow evening compared with the same hours today
   leds.push({ s0: FAR, s1: FAR + 1, off: true, info: "Always off: separates today from tomorrow" });
   const periods = [];
   for (const [name, a, b] of [["daytime", 32, 68], ["evening", 68, 96]]) {
@@ -742,7 +744,7 @@ function drawStrip(canvas, res, t, night, shadeFn) {
     ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
-  // Times under the strip: midnight at the cable end (left), the end of the period on the right
+  // Times under the strip: the cable end is on the left; with reverse direction, midnight moves to the right
   ctx.font = "11px 'IBM Plex Mono', monospace"; ctx.fillStyle = "#8a93a3"; ctx.textBaseline = "top";
   const startTxt = fmtMin(res.start * 15), endTxt = res.endLabel || fmtMin((res.start + res.len) * 15, true);
   const leftTxt = S.reverse ? endTxt : startTxt, rightTxt = S.reverse ? startTxt : endTxt;

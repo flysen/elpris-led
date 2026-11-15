@@ -28,7 +28,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 24px 20px 48px; display: grid
 h1 { font-family: var(--display); font-weight: 700; font-size: 26px; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
 h2 { font-family: var(--display); font-weight: 500; font-size: 16px; margin: 0 0 12px; color: var(--ink); text-wrap: balance; }
 header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch; }
-header a, footer a { color: var(--accent); }
+header a, footer a, .help a { color: var(--accent); }
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
 .stage { display: grid; gap: 14px; }
 .strip-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-bottom: 6px; }
@@ -84,7 +84,7 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
 <main>
   <header>
     <h1>Elpris-LED emulator</h1>
-    <p>Runs the color logic of Elpris-LED v4 in the browser. The top strip is the default color mode, <i>Compared with a normal price</i>. Below it is the other mode, <i>Cheapest to most expensive</i>, and optionally a third strip with free variants of it to experiment with. <a href="../">Install page</a> · <a href="https://github.com/flysen/elpris-led">GitHub</a></p>
+    <p>Runs the color logic of Elpris-LED v4 in the browser, on today's real prices or on example days. The top strip is the default color mode, <i>Compared with a normal price</i>. Below it is the other mode, <i>Cheapest to most expensive</i>, and optionally a third strip with free variants of it to experiment with. <a href="../">Install page</a> · <a href="https://github.com/flysen/elpris-led">GitHub</a></p>
   </header>
 
   <section class="card stage" aria-label="Strips and price chart">
@@ -122,7 +122,8 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
       <div class="ctl">
         <div class="lab"><label for="scenario">Price day</label></div>
         <select id="scenario">
-          <option value="winter">Ordinary winter day (example)</option>
+          <option value="real" disabled>Real prices (loading…)</option>
+          <option value="winter" selected>Ordinary winter day (example)</option>
           <option value="flat">Evenly cheap day (example)</option>
           <option value="spike">A high evening peak (example)</option>
           <option value="negative">Negative prices around midday (example)</option>
@@ -130,6 +131,13 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
           <option value="dearmorrow">Normal day, very expensive tomorrow (example)</option>
           <option value="pasted" disabled>Pasted real prices</option>
         </select>
+      </div>
+      <div class="ctl" id="realAreaBox">
+        <div class="lab"><label for="realArea">Price area</label></div>
+        <select id="realArea">
+          <option>SE1</option><option>SE2</option><option selected>SE3</option><option>SE4</option>
+        </select>
+        <p class="help" id="realInfo"></p>
       </div>
       <div class="btnrow" style="margin-bottom:12px"><button id="reseed" type="button">New random example days</button></div>
       <div class="ctl">
@@ -158,7 +166,7 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
           <option value="always">Always available</option>
           <option value="never">Never available</option>
         </select>
-        <p class="help">The lamp starts looking for tomorrow's prices at 13:30. When they arrive, the colors are recalculated.</p>
+        <p class="help">The lamp starts looking for tomorrow's prices at 13:30. When they arrive, the colors are recalculated. With real prices, tomorrow is only available once it has been published.</p>
       </div>
     </div>
 
@@ -293,8 +301,8 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
   </section>
 
   <section class="card">
-    <h2>Real prices</h2>
-    <p class="help" style="margin-bottom:12px">The page can't fetch prices by itself. Open the addresses below in a new tab, select everything, copy and paste it here. Tomorrow can be left empty.</p>
+    <h2>Paste prices yourself</h2>
+    <p class="help" style="margin-bottom:12px">For a specific date or area. Open the addresses below in a new tab, select everything, copy and paste it here. Tomorrow can be left empty.</p>
     <div class="paste-grid">
       <div>
         <div class="two">
@@ -312,7 +320,10 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
     <p class="msg" id="pasteMsg"></p>
   </section>
 
-  <footer>Emulator and the normal-price color mode designed by <a href="https://github.com/sealjo">@sealjo</a>. The example days are made up but have a realistic shape. The emulator counts 96 quarters per day and ignores the 23- and 25-hour days at the daylight saving time changes; the lamp handles them. Colors follow the FastLED rainbow color wheel that the lamp uses.</footer>
+  <footer>
+    <p>Elpriser tillhandahålls av <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>. The real prices are fetched from there every hour by the project's GitHub workflow; they are spot prices excluding VAT, grid fees and tax.</p>
+    <p>Emulator and the normal-price color mode designed by <a href="https://github.com/sealjo">@sealjo</a>. The example days are made up but have a realistic shape. The emulator counts 96 quarters per day and ignores the 23- and 25-hour days at the daylight saving time changes; the lamp handles them. Colors follow the FastLED rainbow color wheel that the lamp uses.</p>
+  </footer>
 </main>
 <div id="tip"></div>
 
@@ -323,6 +334,8 @@ const $ = id => document.getElementById(id);
 const SLOTS = 96;
 const PAST = 0, NOW = 1, FUTURE = 2;
 const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Published every hour by .github/workflows/prices.yml (scripts/fetch-prices.sh)
+const PRICES_URL = "https://raw.githubusercontent.com/flysen/elpris-led/prices/prices.json";
 
 /* ---------- FastLED equivalents ---------- */
 const scale8 = (i, s) => (i * (1 + s)) >> 8;
@@ -386,11 +399,64 @@ const SCEN = {
   cheapweek: { p: ["low", 1], t: ["winter", 0.75], m: ["winter", 0.7] },
   dearmorrow: { p: ["winter", 1], t: ["winter", 1], m: ["winter", 2.5] }
 };
-let seed = 11, days = [null, null], hist = [], pasted = null;
+let seed = 11, days = [null, null], hist = [], pasted = null, realPrices = null;
+
+/* ---------- Real prices ---------- */
+// Local date as YYYY-MM-DD, offset days from today
+function localDate(offset) {
+  const d = new Date(); d.setDate(d.getDate() + offset);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+// The emulator works with 96 quarters per day: a 92-quarter day is padded, a 100-quarter day cut
+function fit96(a) {
+  if (!a || !a.length) return null;
+  const out = a.slice(0, SLOTS);
+  while (out.length < SLOTS) out.push(out[out.length - 1]);
+  return out;
+}
+// Today, tomorrow and the past days for the chosen area, or false if today isn't in the file
+function useRealPrices() {
+  if (!realPrices || !realPrices.areas) return false;
+  const area = realPrices.areas[$("realArea").value] || {};
+  const today = localDate(0), tomorrow = localDate(1);
+  if (!area[today]) return false;
+  days = [fit96(area[today]), fit96(area[tomorrow])];
+  hist = Object.keys(area).filter(d => d < today).sort().slice(-7).map(d => fit96(area[d]));
+  return true;
+}
+function showRealInfo() {
+  const info = $("realInfo");
+  if (!realPrices) { info.textContent = ""; return; }
+  const area = realPrices.areas[$("realArea").value] || {};
+  const updated = new Date(realPrices.updated);
+  const time = isNaN(updated) ? "" : "Updated " + updated.toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) + ". ";
+  const past = Object.keys(area).filter(d => d < localDate(0)).length;
+  info.innerHTML = time + (area[localDate(1)] ? "Tomorrow is published. " : "Tomorrow is not published yet. ") +
+    past + (past === 1 ? " past day" : " past days") + ' for the normal price. Prices from <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>.';
+}
+function loadRealPrices() {
+  const opt = $("scenario").querySelector('option[value="real"]');
+  fetch(PRICES_URL, { cache: "no-cache" })
+    .then(r => r.ok ? r.json() : Promise.reject(new Error("HTTP " + r.status)))
+    .then(json => {
+      realPrices = json;
+      opt.disabled = false;
+      opt.textContent = "Real prices from elprisetjustnu.se";
+      if (useRealPrices()) {
+        // Real prices are the most useful start: show today as it is, at the real time
+        $("scenario").value = "real";
+        $("live").checked = true;
+      }
+      regen(); readS();
+    })
+    .catch(() => { opt.textContent = "Real prices (not available right now)"; });
+}
+
 function regen() {
   const kind = $("scenario").value;
   if (kind === "pasted" && pasted) { days = pasted; hist = []; return; }
-  const sp = SCEN[kind], rng = mulberry32(seed * 7919 + kind.length * 31);
+  if (kind === "real" && useRealPrices()) return;
+  const sp = SCEN[kind] || SCEN.winter, rng = mulberry32(seed * 7919 + kind.length * 31);
   hist = [];
   for (let d = 7; d >= 1; d--) hist.push(genDay(sp.p[0], rng, -d, sp.p[1]));   // oldest first
   days = [genDay(sp.t[0], rng, 0, sp.t[1]), genDay(sp.m[0], rng, 1, sp.m[1])];
@@ -415,10 +481,16 @@ function readS() {
     show: $("showProp").checked, histDays: +$("histDays").value, normTomorrow: $("normTomorrow").checked,
     dead: +$("dead").value / 100, extreme: +$("extreme").value / 100, levels: +$("levels").value, ticks: $("ticks").checked
   };
+  const real = $("scenario").value === "real";
+  $("realAreaBox").classList.toggle("hidden", !real);
+  $("reseed").classList.toggle("hidden", real);
+  if (real) showRealInfo();
   $("histDaysOut").textContent = S.P.histDays + (S.P.histDays === 1 ? " day" : " days");
   $("deadOut").textContent = "±" + $("dead").value + " öre";
   $("extremeOut").textContent = "±" + $("extreme").value + " öre";
-  $("histHelp").textContent = hist.length ? "The average of these days plus today and, if ticked below, tomorrow." : "Pasted prices have no history, so the normal price is based on today and tomorrow only.";
+  $("histHelp").textContent = hist.length
+    ? "The average of these days plus today and, if ticked below, tomorrow." + (real && hist.length < S.P.histDays ? " Only " + hist.length + " past days are available." : "")
+    : "Pasted prices have no history, so the normal price is based on today and tomorrow only.";
   $("propBlock").classList.toggle("hidden", !S.P.show);
   $("propDesc").textContent = "normal price " + S.P.histDays + (S.P.histDays === 1 ? " day" : " days") + " back, yellow within ±" + $("dead").value + " öre";
   const sw = (lv, txt) => { const [r, g, b] = propBase(lv, S.P.levels); return `<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:50%;background:rgb(${r},${g},${b})"></span>${txt}</span>`; };
@@ -757,7 +829,7 @@ function frame(t) {
   drawStrip($("stripOrig"), st.orig, t, night, shadePlain);
   if (S.P.show) drawStrip($("stripProp"), st.prop, t, night, shadeProp);
   if (S.showVar) drawStrip($("stripVar"), st.vari, t, night, shadePlain);
-  const key = JSON.stringify([S.V, st.cur, st.all.length, S.N, seed, $("scenario").value]);
+  const key = JSON.stringify([S.V, st.cur, st.all.length, S.N, seed, $("scenario").value, $("realArea").value]);
   if (key !== last.legend) {
     drawLegend($("lgOrig"), st.orig); drawLegend($("lgVar"), st.vari);
     $("lgOrigLo").textContent = st.orig.lgLo; $("lgOrigHi").textContent = st.orig.lgHi;
@@ -845,8 +917,9 @@ $("usePasted").addEventListener("click", () => {
 /* ---------- Wiring ---------- */
 document.querySelectorAll("input, select").forEach(el => el.addEventListener("input", () => { readS(); }));
 $("scenario").addEventListener("change", () => { regen(); readS(); });
+$("realArea").addEventListener("change", () => { regen(); readS(); });
 $("reseed").addEventListener("click", () => {
-  if ($("scenario").value === "pasted") $("scenario").value = "winter";
+  if ($("scenario").value === "pasted" || $("scenario").value === "real") $("scenario").value = "winter";
   seed++; regen(); readS();
 });
 $("play").addEventListener("click", () => {
@@ -866,6 +939,7 @@ $("pArea").addEventListener("input", updateUrls);
   const d = new Date();
   $("pDate").value = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
   updateUrls(); regen(); readS();
+  loadRealPrices();
   requestAnimationFrame(t => { lastT = t; frame(t); });
 })();
 </script>

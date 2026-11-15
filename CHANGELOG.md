@@ -4,6 +4,11 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+## v4.0.3
+
+- **The emulator shows real prices:** today's, tomorrow's (once published) and the last three days' prices for SE1–SE4, updated every hour, at the real time of day. The example days and pasting prices yourself are still there. Prices provided by [Elpriset just nu.se](https://www.elprisetjustnu.se).
+- No change in the lamps' firmware.
+
 ## v4.0.2
 
 - **ESP8266:** fetching prices and checking for updates failed on v4.0, because a secure connection needs almost all of the ESP8266's free memory. The lamp now asks each server whether it accepts smaller data packets, and then uses 4 kB instead of 16 kB of memory for the connection.

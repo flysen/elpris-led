@@ -6,18 +6,14 @@
 
 -
 
-## Checklist
+## Test cases
 
-- [ ] Tests added or updated for new logic in `elpris_led/elpris_logic.h` (`make test`)
-- [ ] `README.md` updated (features, settings, setup steps, building)
-- [ ] Install page `docs/index.html` updated, if what it shows or explains changed
-- [ ] Emulator `docs/emulator/index.html` updated, if what the strip shows changed
-- [ ] Web UI help texts updated, if a setting was added or changed
-- [ ] `CHANGELOG.md`: a line under *Unreleased*, written for people who use the lamp
-- [ ] Settings from older versions still work after updating (no lamp loses its settings)
-- [ ] Flash layout unchanged (automatic updates can't change it)
+<!--
+Every pull request has test cases. List each one, and tick it when it has passed.
+- Automated: the tests added or changed in tests/test_logic.cpp, and CI.
+- By hand: what was checked on a lamp, in the emulator or in the browser, and what you saw.
+A pull request is ready to merge when all its test cases are ticked.
+-->
 
-## Testing
-
-- [ ] CI passes for both boards (tests, lint, firmware)
-- [ ] Tried on a lamp:
+- [ ] CI passes: tests, lint, firmware
+- [ ] 

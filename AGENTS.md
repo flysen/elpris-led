@@ -16,6 +16,7 @@ Elpris-LED: firmware for an ESP32 (and, in maintenance mode, ESP8266) driving a 
 | `tests/test_logic.cpp`, `Makefile` | Unit tests for `elpris_logic.h`, run on a normal computer |
 | `scripts/` | Build, packaging, release-tag check, dependency pins (`arduino-deps.sh`) and the emulator's price fetcher |
 | `.github/workflows/` | `compile.yml` (CI), `release.yml` (tag → release + install page), `prices.yml` (hourly prices for the emulator) |
+| `.github/pull_request_template.md` | Summary, changes and test cases for every pull request |
 | `docs/index.html` | The install page (GitHub Pages) |
 | `docs/emulator/index.html` | The emulator: the lamp's color logic in JavaScript, on real prices |
 | `docs/normal-price-mode.md` | Design of the default color mode |
@@ -30,16 +31,24 @@ Elpris-LED: firmware for an ESP32 (and, in maintenance mode, ESP8266) driving a 
    - Never rename the **update files**: `firmware/<board>/elpris-led.bin` on the install page, `firmware/elpris-led.bin` (kept for v2.0 lamps), and `elpris-led-<tag>-<board>-ota.bin` / `-full.bin` in releases.
    - **Settings from older versions must still load.** Settings keys (namespace `elpris-config`, keys at most 15 characters) are never reused for something else; when a setting changes shape, migrate it (see `initialPastPercent()`), with tests.
    - Don't change the update URLs or how versions are compared without a plan for every lamp already out there.
-4. **New logic goes in `elpris_logic.h` with tests** in `tests/test_logic.cpp`: boundaries, daylight saving days (23/25 hours, 92/100 quarters) and edge cases. Keep hardware code thin.
+4. **Every pull request has test cases** (see below). New logic goes in `elpris_logic.h` with automated tests in `tests/test_logic.cpp`: boundaries, daylight saving days (23/25 hours, 92/100 quarters) and edge cases. Keep hardware code thin.
 5. **The emulator mirrors the lamp.** When what the strip shows changes, update `docs/emulator/index.html` in the same pull request.
 6. **ESP8266 is in maintenance mode:** fixes only, no new features. It has about 30 kB free before a TLS connection, which needs most of it; don't add anything that uses more memory on ESP8266. New features are for ESP32.
 7. **Prices are spot prices excluding VAT, grid fees and tax**, from elprisetjustnu.se. Credit them as *"Elpriser tillhandahålls av Elpriset just nu.se"* with a link where prices are shown publicly.
 
+## Test cases
+
+No pull request without test cases. In the pull request's *Test cases* section, list every test case as a checkbox and tick it when it has passed; a pull request is ready when all are ticked.
+
+- **Automated** wherever there is logic: name the tests added or changed in `tests/test_logic.cpp`, and always "CI passes: tests, lint, firmware".
+- **By hand** for what can't be tested automatically, written so someone else can repeat it: what to do and what should happen. For example "Emulator: choose 3 levels → the legend shows green, yellow, red", or "Lamp: Check for updates now → restarts and shows the new version".
+- Changes to documentation only still get a test case, such as "Links in the README open the right pages".
+
 ## How to work
 
 - **Branch and pull request** against `main`; `main` is protected and needs the CI checks `tests`, `lint` and `firmware`. Pull requests are squash-merged.
-- Follow the **pull request checklist** in `.github/pull_request_template.md`.
-- Add a line to **`CHANGELOG.md` under *Unreleased***, written for people who use the lamp, not for developers.
+- **Update the documentation in the same pull request** as the code: `README.md`, the install page, the emulator, the help texts in the lamp's web UI, as far as the change affects them.
+- Add a line to **`CHANGELOG.md` under *Unreleased*** when something changes for people who use the lamp, written for them, not for developers.
 - Keep **commit messages short** and descriptive.
 - **Bigger changes to what the strip shows** start as a design document in `docs/` (like `docs/normal-price-mode.md`), agreed before the code.
 - **Credit contributors** with `Co-authored-by:` lines when you build on someone else's work, and in the README's *Credits*.

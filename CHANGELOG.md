@@ -4,6 +4,8 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+- **Emulator:** a preview of the blue status LED planned for the ESP32 board (under *Advanced*): fast blinking while setting up wifi, the lamp's network address as counted blinks, and signals for working normally, fetching prices, fetch errors and updates. Try the patterns there before they go into the lamp. No change in the lamps' firmware.
+
 ## v4.0.4
 
 - **The emulator is easier to read:** a summary in plain words at the top (the price now, whether it's cheaper or more expensive than usual, the cheapest time left, and how tomorrow compares with today), the lamp's settings with the same names as on the lamp's own page, and a chart with a title and units.

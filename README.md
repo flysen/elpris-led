@@ -161,7 +161,7 @@ Builds you compile yourself, and CI builds, report version `dev` and never updat
 
 GitHub pauses scheduled workflows after 60 days without activity in the repository and sends an e-mail about it; *Enable workflow* in the Actions tab starts it again. The workflow can also be run by hand there (*Run workflow*).
 
-The emulator repeats the lamp's logic in JavaScript, so when what the strip shows changes, the emulator must be updated in the same pull request (it's on the checklist).
+The emulator repeats the lamp's logic in JavaScript, so when what the strip shows changes, the emulator must be updated in the same pull request.
 
 ## Building from source
 
@@ -209,9 +209,12 @@ Dependabot opens pull requests when the GitHub Actions used here get new version
 
 ### Contributing
 
-New pull requests get a checklist (`.github/pull_request_template.md`): tests, README, install page, emulator, web UI help texts, a line in `CHANGELOG.md` under *Unreleased*, settings from older versions, and an unchanged flash layout. Bigger changes to what the strip shows are best described in a design document under `docs/` first, like [docs/normal-price-mode.md](docs/normal-price-mode.md). New features are developed for ESP32; on ESP8266, check that the free memory before a price fetch (shown in the web UI) doesn't go down.
+The rules for contributing, for people and AI assistants alike, are in [AGENTS.md](AGENTS.md); `CLAUDE.md` points there too. In short:
 
-Changes to the files in `.github/workflows/` need GitHub's *workflow* permission, which some tools and integrations don't have; such changes may have to be made by hand in the browser.
+- **Every pull request has test cases.** The pull request template (`.github/pull_request_template.md`) asks for them: automated tests for new logic, and checks by hand on a lamp, in the emulator or in the browser, written so someone else can repeat them. Each test case is a checkbox that is ticked when it has passed.
+- Documentation (README, install page, emulator, web UI help texts) is updated in the same pull request as the code, and `CHANGELOG.md` gets a line under *Unreleased* when something changes for people who use the lamp.
+- Bigger changes to what the strip shows are best described in a design document under `docs/` first, like [docs/normal-price-mode.md](docs/normal-price-mode.md). New features are developed for ESP32.
+- Changes to the files in `.github/workflows/` need GitHub's *workflow* permission, which some tools and integrations don't have; such changes may have to be made by hand in the browser.
 
 ## Releases (for maintainers)
 

@@ -1,0 +1,71 @@
+# Instructions for AI coding assistants
+
+This file tells AI assistants (Claude Code, GitHub Copilot, Codex, Cursor and others) how this project works. People are welcome to read it too; the human-facing documentation is [README.md](README.md).
+
+## What this is
+
+Elpris-LED: firmware for an ESP32 (and, in maintenance mode, ESP8266) driving a WS2812B LED strip that shows the day's Swedish spot electricity prices from [elprisetjustnu.se](https://www.elprisetjustnu.se) as colors. Users install prebuilt firmware from the install page and the lamps update themselves from GitHub releases. The lamps run unattended in people's homes for years, so reliability and backwards compatibility matter more than new features.
+
+## Where things are
+
+| Path | What it is |
+|---|---|
+| `elpris_led/elpris_led.ino` | The sketch: wifi, fetching prices, updates, web UI, drawing the strip |
+| `elpris_led/elpris_logic.h` | Pure logic with no Arduino dependencies: time and DST, slots, LED mapping, color levels, normal price, versions. Shared by both boards and tested |
+| `elpris_led/platform.h` | The few differences between ESP32 and ESP8266 (includes, data pin, settings storage, mDNS, OTA, cache size) |
+| `tests/test_logic.cpp`, `Makefile` | Unit tests for `elpris_logic.h`, run on a normal computer |
+| `scripts/` | Build, packaging, release-tag check, dependency pins (`arduino-deps.sh`) and the emulator's price fetcher |
+| `.github/workflows/` | `compile.yml` (CI), `release.yml` (tag → release + install page), `prices.yml` (hourly prices for the emulator) |
+| `docs/index.html` | The install page (GitHub Pages) |
+| `docs/emulator/index.html` | The emulator: the lamp's color logic in JavaScript, on real prices |
+| `docs/normal-price-mode.md` | Design of the default color mode |
+| `CHANGELOG.md`, `README.md` | User-facing history and documentation |
+
+## Rules that must not be broken
+
+1. **English only** in the repository: code, comments, UI text, docs, commit messages and pull requests. (The maintainers may talk to you in Swedish; answer them in their language, but write English into the repo.)
+2. **No passwords or keys in the code.** OTA and config portal passwords are set in the lamp's web UI and stored on the device.
+3. **Lamps in the field must keep working after an update:**
+   - Never change the **flash layout**: ESP32 *Minimal SPIFFS* (`min_spiffs`), ESP8266 `eesz=4M1M`. Over-the-air updates can't change it.
+   - Never rename the **update files**: `firmware/<board>/elpris-led.bin` on the install page, `firmware/elpris-led.bin` (kept for v2.0 lamps), and `elpris-led-<tag>-<board>-ota.bin` / `-full.bin` in releases.
+   - **Settings from older versions must still load.** Settings keys (namespace `elpris-config`, keys at most 15 characters) are never reused for something else; when a setting changes shape, migrate it (see `initialPastPercent()`), with tests.
+   - Don't change the update URLs or how versions are compared without a plan for every lamp already out there.
+4. **New logic goes in `elpris_logic.h` with tests** in `tests/test_logic.cpp`: boundaries, daylight saving days (23/25 hours, 92/100 quarters) and edge cases. Keep hardware code thin.
+5. **The emulator mirrors the lamp.** When what the strip shows changes, update `docs/emulator/index.html` in the same pull request.
+6. **ESP8266 is in maintenance mode:** fixes only, no new features. It has about 30 kB free before a TLS connection, which needs most of it; don't add anything that uses more memory on ESP8266. New features are for ESP32.
+7. **Prices are spot prices excluding VAT, grid fees and tax**, from elprisetjustnu.se. Credit them as *"Elpriser tillhandahålls av Elpriset just nu.se"* with a link where prices are shown publicly.
+
+## How to work
+
+- **Branch and pull request** against `main`; `main` is protected and needs the CI checks `tests`, `lint` and `firmware`. Pull requests are squash-merged.
+- Follow the **pull request checklist** in `.github/pull_request_template.md`.
+- Add a line to **`CHANGELOG.md` under *Unreleased***, written for people who use the lamp, not for developers.
+- Keep **commit messages short** and descriptive.
+- **Bigger changes to what the strip shows** start as a design document in `docs/` (like `docs/normal-price-mode.md`), agreed before the code.
+- **Credit contributors** with `Co-authored-by:` lines when you build on someone else's work, and in the README's *Credits*.
+- Don't add dependencies lightly. Core and library versions are pinned in `scripts/arduino-deps.sh`.
+- **Files in `.github/workflows/`** need GitHub's *workflow* permission. If your tools don't have it, write the file content in the pull request or chat and let a maintainer add it by hand.
+
+## Commands
+
+```bash
+make test                                    # unit tests
+make test-sanitize                           # the same with AddressSanitizer and UBSan
+bash scripts/arduino-deps.sh                 # install the pinned ESP32/ESP8266 cores and libraries
+bash scripts/build-firmware.sh dev esp32     # build one board into build-out/<board> and dist/
+bash scripts/package.sh dev                  # install page, emulator and manifest into site/
+```
+
+CI runs the same on every pull request. Local and CI builds report version `dev` and never auto-update.
+
+## Things learned the hard way
+
+- **Arduino prototypes:** the Arduino builder declares the sketch's functions near the top of the file, before types defined in the sketch. A struct used in a function signature must be defined in a header (see `HistoryDay` in `elpris_logic.h`).
+- **`DATA_PIN` is a `constexpr`, not a macro;** FastLED uses that name internally.
+- **Default arguments** on sketch functions can break the generated prototypes; pass all arguments explicitly.
+- **ESP8266 and TLS:** a response that stops part-way usually means memory ran out during the connection, not a server problem. The web UI shows how many bytes arrived.
+- **Release candidates** (`vX.Y-rcN`) are pre-releases: the install page and normal lamps ignore them; lamps with the test channel install them.
+
+## Releases
+
+Maintainers release from the browser: rename *Unreleased* in `CHANGELOG.md` to the version in a pull request, then *Releases → Draft a new release*, tag `vX.Y[.Z]` (or `vX.Y-rcN` as a pre-release) on `main`, and paste the changelog section as release notes. `release.yml` checks the tag, runs the tests, builds both boards and publishes the release and the install page.

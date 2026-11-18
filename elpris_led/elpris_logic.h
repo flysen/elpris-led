@@ -304,3 +304,116 @@ inline bool isNewerTestVersion(const char* candidate, const char* current) {
   if (!parseRelease(candidate, a, aRc) || !parseRelease(current, b, bRc)) return false;
   return compareReleases(a, aRc, b, bRc) > 0;
 }
+
+// =====================================================================
+//  The board's blue status LED (GPIO2 on ESP32 DevKit boards)
+//
+//  The same patterns and timings as the emulator's preview (docs/emulator/index.html), so the lamp
+//  can be read the way the emulator shows it:
+//  - fast blinking while connecting to wifi and while the lamp's own wifi Elpris-LED-Config is open
+//  - the lamp's network address, three times after connecting: each digit as that many short blinks,
+//    0 as one long blink, a short pause between digits and a long pause between the parts
+//  - on while fetching prices or installing an update
+//  - double blinks while fetching prices fails
+//  - a short blink every 10 seconds when everything works
+// =====================================================================
+
+// One step of a blink pattern: on or off for a number of milliseconds. A pattern repeats.
+struct BlinkStep { uint8_t on; uint16_t ms; };
+
+const int BLINK_UNIT_MS   = 250;   // a short blink in the address
+const int ADDRESS_REPEATS = 3;     // the address is shown this many times after connecting
+const int MAX_BLINK_STEPS = 256;   // enough for a whole address: 12 digits of up to 9 blinks, plus pauses
+
+enum StatusLed {
+  STATUS_LED_OFF,         // turned off in the web UI
+  STATUS_LED_CONNECTING,  // fast blinking
+  STATUS_LED_PORTAL,      // fast blinking: the lamp's own wifi is open for setup
+  STATUS_LED_ADDRESS,     // the network address
+  STATUS_LED_BUSY,        // on: fetching prices or installing an update
+  STATUS_LED_FAILING,     // double blinks
+  STATUS_LED_OK,          // a short blink every 10 seconds
+};
+
+// What the LED shows. Setting up wifi always blinks, so a lamp can be set up even with the LED turned off;
+// the address is shown in full before anything else, so its blinks can be counted.
+inline StatusLed statusLedState(bool portal, bool connected, bool enabled, bool showingAddress, bool busy,
+                                bool failing) {
+  if (portal) return STATUS_LED_PORTAL;
+  if (!connected) return STATUS_LED_CONNECTING;
+  if (!enabled) return STATUS_LED_OFF;
+  if (showingAddress) return STATUS_LED_ADDRESS;
+  if (busy) return STATUS_LED_BUSY;
+  if (failing) return STATUS_LED_FAILING;
+  return STATUS_LED_OK;
+}
+
+// The fixed patterns. The address has its own, built by addressBlinkSteps().
+inline void statusLedPattern(StatusLed state, const BlinkStep*& steps, int& count) {
+  static const BlinkStep off[]     = {{0, 1000}};
+  static const BlinkStep fast[]    = {{1, 100}, {0, 100}};
+  static const BlinkStep busy[]    = {{1, 1000}};
+  static const BlinkStep failing[] = {{1, 150}, {0, 150}, {1, 150}, {0, 1500}};
+  static const BlinkStep ok[]      = {{1, 120}, {0, 9880}};
+  switch (state) {
+    case STATUS_LED_CONNECTING:
+    case STATUS_LED_PORTAL:  steps = fast;    count = 2; return;
+    case STATUS_LED_BUSY:    steps = busy;    count = 1; return;
+    case STATUS_LED_FAILING: steps = failing; count = 4; return;
+    case STATUS_LED_OK:      steps = ok;      count = 2; return;
+    default:                 steps = off;     count = 1; return;
+  }
+}
+
+// Total length of a pattern in milliseconds
+inline unsigned long blinkPatternMs(const BlinkStep* steps, int count) {
+  unsigned long total = 0;
+  for (int i = 0; i < count; i++) total += steps[i].ms;
+  return total;
+}
+
+// Whether the LED is on at time t (ms) into a repeating pattern. An empty pattern is off.
+inline bool blinkPatternOn(const BlinkStep* steps, int count, unsigned long t) {
+  unsigned long total = blinkPatternMs(steps, count);
+  if (total == 0) return false;
+  t %= total;
+  for (int i = 0; i < count; i++) {
+    if (t < steps[i].ms) return steps[i].on != 0;
+    t -= steps[i].ms;
+  }
+  return false;   // not reached
+}
+
+// How many parts of the address to show: those that differ between devices on the network. The parts of
+// the network mask that are 255 are the same for every device, so 255.255.255.0 (/24) shows the last part,
+// 255.255.0.0 (/16) the last two and 255.0.0.0 (/8) the last three. Always at least one part.
+inline int addressPartsToShow(const uint8_t mask[4]) {
+  int same = 0;
+  while (same < 4 && mask[same] == 255) same++;
+  int parts = 4 - same;
+  return parts < 1 ? 1 : parts;
+}
+
+// Builds the blink pattern for the last `parts` parts of an address, for one showing. Returns the number of
+// steps written to out (at most maxSteps).
+inline int addressBlinkSteps(const uint8_t ip[4], int parts, int unitMs, BlinkStep* out, int maxSteps) {
+  int n = 0;
+  auto add = [&](bool on, int ms) {
+    if (n < maxSteps) out[n++] = BlinkStep{(uint8_t)(on ? 1 : 0), (uint16_t)ms};
+  };
+  if (parts < 1) parts = 1;
+  if (parts > 4) parts = 4;
+  for (int p = 4 - parts; p < 4; p++) {
+    char digits[4];
+    int len = snprintf(digits, sizeof(digits), "%u", (unsigned)ip[p]);
+    for (int d = 0; d < len; d++) {
+      int value = digits[d] - '0';
+      if (value == 0) { add(true, unitMs * 4); add(false, unitMs); }            // 0 = one long blink
+      else for (int k = 0; k < value; k++) { add(true, unitMs); add(false, unitMs); }
+      if (d < len - 1) add(false, unitMs * 4);                                   // short pause between digits
+    }
+    if (p < 3) add(false, unitMs * 10);                                           // long pause between the parts
+  }
+  add(false, unitMs * 20);                                                         // before it is shown again
+  return n;
+}

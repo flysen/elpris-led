@@ -1,6 +1,6 @@
-// Elpris-LED v4
-// Runs on ESP32 and ESP8266. Board differences are in platform.h.
-// Requires: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 or ESP8266 Arduino core
+// Elpris-LED v5
+// Runs on ESP32. Board-specific includes and pins are in platform.h. (ESP8266 support ended with v4.0.5.)
+// Requires: ArduinoJson 7.x, FastLED, WiFiManager (tzapu), ESP32 Arduino core
 //
 // Features:
 //  - Two color modes:
@@ -13,17 +13,17 @@
 //  - The current 15 minutes pulses towards white and the time that has passed is dimmed to an
 //    adjustable brightness, so "now" is easy to see
 //  - Few API calls: today's prices once a day, a few past days for the normal price, tomorrow's
-//    from 13:30 until they are available
-//  - Prices are read one at a time from the response, so it fits in ESP8266 memory; on ESP8266, smaller
-//    TLS buffers are used when the server allows it
+//    from 13:00 until they are available
+//  - Prices are read one at a time from the response, so memory use stays small
 //  - A day only counts as fetched when all of it arrived; the web UI shows how much of a response arrived
 //  - Exponential backoff + visual error indication, last error shown in the web UI
 //  - Cached data is used as long as it covers the current time ("offline" only when it runs out)
 //  - Settings are validated, WiFiManager fields show stored values
 //  - No blocking calls in the web handler
 //  - OTA and portal passwords are set in the web UI and stored in flash (no passwords in the code)
-//  - Automatic updates: new GitHub releases are found every 6 hours and installed right after a
-//    restart, when the most memory is free. A test channel also installs release candidates.
+//  - Automatic updates: new GitHub releases are found every 6 hours and installed right away, without an
+//    extra restart. A test channel also installs release candidates.
+//  - The board's blue LED shows the lamp's state and its network address (see elpris_logic.h)
 //  - Network name elpris-led-xxxxxx in the router and http://elpris-led.local via mDNS
 //  - Pure logic lives in elpris_logic.h and is tested with "make test" (see tests/)
 
@@ -59,13 +59,11 @@ const char* MDNS_NAME  = "elpris-led";                   // reachable as http://
 const char* USER_AGENT = "Elpris-LED/" FW_VERSION " (+https://github.com/flysen/elpris-led)";
 
 const char* PRICE_HOST   = "www.elprisetjustnu.se";
-const char* PAGES_HOST   = "flysen.github.io";
-const char* GITHUB_API_HOST = "api.github.com";
 
 const int SLOTS_PER_DAY   = 96;
-const int RING_SIZE       = PRICE_CACHE_SLOTS;   // per board, see platform.h
+const int RING_SIZE       = 1024;   // about 10 days of 15-minute prices (8 kB)
 
-const int TOMORROW_FETCH_MIN = 13 * 60 + 30;  // start looking for tomorrow's prices at 13:30 local time
+const int TOMORROW_FETCH_MIN = 13 * 60;       // start looking for tomorrow's prices at 13:00 local time
 const int TOMORROW_ERROR_MIN = 16 * 60;       // missing tomorrow prices count as an error only after 16:00
 const int STATUS_LEDS        = 3;             // number of LEDs that blink magenta on fetch errors
 
@@ -92,8 +90,7 @@ const int FETCH_ERR_PARTIAL = -103;   // only part of the day arrived
 // and one app binary per board. Release candidates never reach the install page.
 // Test channel: the lamp asks GitHub for the newest release, release candidates included, and downloads
 // the OTA file for its board straight from that release.
-// When a newer version is found, the lamp restarts and installs it first thing after connecting to wifi,
-// before anything else has used memory. That matters on ESP8266, where https needs most of the free memory.
+// When a newer version is found, the lamp installs it right away and restarts into it.
 const char* UPDATE_BASE_URL  = "https://flysen.github.io/elpris-led/";
 const char* UPDATE_FIRMWARE  = "firmware/" BOARD_NAME "/elpris-led.bin";
 const char* RELEASES_API     = "https://api.github.com/repos/flysen/elpris-led/releases?per_page=5";
@@ -101,30 +98,6 @@ const char* RELEASE_DOWNLOAD = "https://github.com/flysen/elpris-led/releases/do
 const unsigned long UPDATE_FIRST_CHECK_MS = 2UL * 60UL * 1000UL;          // first check 2 min after boot
 const unsigned long UPDATE_INTERVAL_MS    = 6UL * 60UL * 60UL * 1000UL;   // then every 6 hours
 const unsigned long UPDATE_RETRY_MS       = 60UL * 60UL * 1000UL;         // retry after 1 h if the check fails
-
-// ---------- TLS MEMORY (ESP8266) ----------
-// A TLS connection normally needs a 16 kB receive buffer, which is most of what an ESP8266 has free. If the
-// server accepts smaller TLS fragments, 4 kB is enough and leaves room for everything else during a download.
-// Each server is asked once; servers that don't accept it keep the normal buffer. Firmware downloads always
-// use the normal buffer, because they may be redirected to another server.
-#if defined(ARDUINO_ARCH_ESP8266)
-struct TlsProbe { const char* host; int8_t smallOk; };   // smallOk: -1 not asked yet, 0 no, 1 yes
-TlsProbe tlsProbes[] = {{PRICE_HOST, -1}, {PAGES_HOST, -1}, {GITHUB_API_HOST, -1}};
-
-void shrinkTlsBuffers(WiFiClientSecure& client, const char* host) {
-  for (TlsProbe& p : tlsProbes) {
-    if (strcmp(p.host, host) != 0) continue;
-    if (p.smallOk < 0) {
-      p.smallOk = WiFiClientSecure::probeMaxFragmentLength(host, 443, 4096) ? 1 : 0;
-      Serial.printf("TLS 4 kB fragments %s by %s\n", p.smallOk ? "accepted" : "not accepted", host);
-    }
-    if (p.smallOk == 1) client.setBufferSizes(4096, 512);
-    return;
-  }
-}
-#else
-void shrinkTlsBuffers(WiFiClientSecure&, const char*) {}   // ESP32 has plenty of memory
-#endif
 
 // ---------- LED DATA ----------
 CRGB leds[MAX_LEDS];
@@ -191,6 +164,7 @@ bool cfgFiveLevels  = true;   // 5 levels (green, yellow-green, yellow, orange, 
 bool cfgNormTomorrow = true;  // count tomorrow in the normal price once its prices are known
 bool cfgAutoUpdate  = true;
 bool cfgTestChannel = false;  // also install release candidates (test versions)
+bool cfgBoardLed    = true;   // the board's blue LED shows the lamp's state
 char cfgOtaPw[33]   = "";   // empty = OTA disabled
 char cfgApPw[33]    = "";   // empty = open config portal, otherwise at least 8 characters
 
@@ -230,7 +204,19 @@ String        latestVersion      = "";     // latest release seen on the install
 String        updateMessage      = "";     // result of the last update attempt, shown in the web UI
 unsigned long nextUpdateCheckMs  = UPDATE_FIRST_CHECK_MS;
 bool          updateRequested    = false;  // "Check for updates now" was pressed
-bool          restartingForUpdate = false; // a restart to install an update is coming
+bool          installingUpdate   = false;  // an update is about to be installed or being installed
+unsigned long installAtMs        = 0;      // when to start installing, after the web page has answered
+
+// ---------- THE BOARD'S BLUE LED ----------
+// Driven by a timer, so it keeps blinking while the lamp waits for the network or installs an update.
+// The patterns are in elpris_logic.h and are the same as in the emulator.
+Ticker        statusTicker;
+volatile bool statusPortal    = false;     // the lamp's own wifi is open for setup
+volatile bool statusConnected = false;
+volatile bool statusBusy      = false;     // fetching prices or installing an update
+volatile unsigned long addressUntilMs = 0; // showing the address until then; 0 = not showing
+BlinkStep     addressSteps[MAX_BLINK_STEPS];
+int           addressStepCount = 0;
 
 // =====================================================================
 //  Settings: load / validate / save
@@ -279,6 +265,7 @@ void loadSettings() {
   cfgNormTomorrow = preferences.getBool("normtmrw", true);
   cfgAutoUpdate  = preferences.getBool("autoupd", true);
   cfgTestChannel = preferences.getBool("testchan", false);
+  cfgBoardLed    = preferences.getBool("boardled", true);
   preferences.getString("otapw", "").toCharArray(cfgOtaPw, sizeof(cfgOtaPw));
   preferences.getString("appw", "").toCharArray(cfgApPw, sizeof(cfgApPw));
   sanitizeSettings();
@@ -303,6 +290,7 @@ void saveSettings() {
   preferences.putBool("normtmrw", cfgNormTomorrow);
   preferences.putBool("autoupd", cfgAutoUpdate);
   preferences.putBool("testchan", cfgTestChannel);
+  preferences.putBool("boardled", cfgBoardLed);
   preferences.putString("otapw", cfgOtaPw);
   preferences.putString("appw", cfgApPw);
 }
@@ -377,7 +365,6 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   lastResponseInfo = "";
   WiFiClientSecure client;
   client.setInsecure();
-  shrinkTlsBuffers(client, PRICE_HOST);
   HTTPClient http;
   setHttpTimeouts(http);
   http.useHTTP10(true);
@@ -392,7 +379,7 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   int expected = http.getSize();   // -1 if the server didn't say
 
   // The response is a JSON array with one object per price. Reading the objects one at a time,
-  // instead of the whole array at once, keeps memory use small enough for ESP8266.
+  // instead of the whole array at once, keeps memory use small.
   JsonDocument filter;
   filter["SEK_per_kWh"] = true;
   filter["time_start"]  = true;
@@ -467,12 +454,14 @@ void serviceFetch(const struct tm& t, time_t now) {
 
   String memBefore = memoryInfo();
   int code = 0;
+  statusBusy = true;
 
   if (dayOffset < 0) {
     // A past day: only its sum is kept, and only if all of it arrived. If it can't be fetched it is stored as
     // empty and left out of the normal price, so a missing old day never blocks tomorrow's prices.
     PriceSum day;
     bool ok = fetchDay(priceUrl(now, dayOffset), code, &day);
+    statusBusy = false;
     long daySlots = localMidnightSlot(now, dayOffset + 1) - localMidnightSlot(now, dayOffset);
     if (ok && day.count < daySlots) { ok = false; code = FETCH_ERR_PARTIAL; }
     storeHistory(localMidnightSlot(now, dayOffset), ok ? day : PriceSum());
@@ -485,6 +474,7 @@ void serviceFetch(const struct tm& t, time_t now) {
   }
 
   bool ok = fetchDay(priceUrl(now, dayOffset), code, nullptr);
+  statusBusy = false;
   int32_t startSlot = dayOffset ? tomorrowSlot : todaySlot;
   if (ok && !dayCovered(startSlot)) { ok = false; code = FETCH_ERR_PARTIAL; }   // keep what arrived, but try again
   unsigned long ms = millis();
@@ -519,7 +509,6 @@ void serviceFetch(const struct tm& t, time_t now) {
 bool fetchLatestVersion(String& out) {
   WiFiClientSecure client;
   client.setInsecure();
-  shrinkTlsBuffers(client, PAGES_HOST);
   HTTPClient http;
   setHttpTimeouts(http);
   http.useHTTP10(true);
@@ -543,11 +532,10 @@ bool fetchLatestVersion(String& out) {
 }
 
 // Test channel: the newest release on GitHub, release candidates included. The releases are read one at a
-// time from the response and only their tag and draft flag are kept, so it fits in ESP8266 memory.
+// time from the response and only their tag and draft flag are kept.
 bool fetchNewestRelease(String& out) {
   WiFiClientSecure client;
   client.setInsecure();
-  shrinkTlsBuffers(client, GITHUB_API_HOST);
   HTTPClient http;
   setHttpTimeouts(http);
   http.useHTTP10(true);
@@ -601,13 +589,14 @@ void showUpdatingOnStrip() {
   FastLED.show();
 }
 
-// Downloads and installs the firmware. Reboots on success; returns only if it failed.
+// Downloads and installs the firmware. Reboots into it on success; returns only if it failed.
 void installUpdate() {
   String memBefore = memoryInfo();
   String url = firmwareUrl(latestVersion);
   Serial.printf("Installing update %s from %s (running %s on %s, %s)\n",
                 latestVersion.c_str(), url.c_str(), FW_VERSION, BOARD_NAME, memBefore.c_str());
   showUpdatingOnStrip();
+  statusBusy = true;
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -615,38 +604,31 @@ void installUpdate() {
   httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);   // GitHub release files redirect to a download host
   t_httpUpdate_return r = httpUpdate.update(client, url);
 
+  // Still here: nothing was installed. Carry on and try again at the next regular check.
+  statusBusy = false;
+  installingUpdate = false;
   if (r == HTTP_UPDATE_FAILED) {
     updateMessage = "Update to " + latestVersion + " failed: " + httpUpdate.getLastErrorString() + " (" + memBefore + ")";
   } else {
     updateMessage = "No update installed";
   }
   Serial.println(updateMessage);
+  nextUpdateCheckMs = millis() + UPDATE_INTERVAL_MS;
   needRebuild = true;
 }
 
-// Restart and install the update first thing after the restart, when the most memory is free
-void restartToInstall(const String& version) {
-  preferences.putString("pendver", version);
-  preferences.putBool("pendupd", true);
-  updateMessage = "Restarting to install " + version + "...";
-  restartingForUpdate = true;
+// Installs the update from loop() in a moment, so the web page that asked for it gets its answer first
+void scheduleInstall(const String& version) {
+  latestVersion = version;
+  updateMessage = "Installing " + version + "... The lamp restarts when it is done, in about a minute.";
+  installingUpdate = true;
+  installAtMs = millis() + 1500;
   showUpdatingOnStrip();
-  restartAtMs = millis() + 1500;   // time for the web page to answer first
   Serial.println(updateMessage);
 }
 
-// Called in setup right after wifi connects, before the web server, mDNS and price fetching start
-void installPendingUpdate() {
-  if (!preferences.getBool("pendupd", false)) return;
-  preferences.putBool("pendupd", false);   // clear first, so a failing update can't cause a restart loop
-  latestVersion = preferences.getString("pendver", "");
-  installUpdate();
-  // Still here: the update failed. Start normally and try again at the next regular check.
-  nextUpdateCheckMs = millis() + UPDATE_INTERVAL_MS;
-}
-
 void serviceUpdate() {
-  if (restartingForUpdate) return;
+  if (installingUpdate) return;
   if (!updateRequested && (long)(millis() - nextUpdateCheckMs) < 0) return;
   if (WiFi.status() != WL_CONNECTED) return;
 
@@ -666,7 +648,7 @@ void serviceUpdate() {
 
   bool newer = cfgTestChannel ? isNewerTestVersion(v.c_str(), FW_VERSION) : isNewerVersion(v.c_str(), FW_VERSION);
   if (newer) {
-    if (cfgAutoUpdate || manual) restartToInstall(v);
+    if (cfgAutoUpdate || manual) scheduleInstall(v);
     else updateMessage = v + " is available";
   } else if (manual) {
     updateMessage = "Already up to date";
@@ -880,10 +862,10 @@ void handleRoot() {
   // Reload the page by itself while an update check or an update restart is going on
   String refresh = "";
   if (updateRequested)          refresh = "<meta http-equiv='refresh' content='5'>";
-  else if (restartingForUpdate) refresh = "<meta http-equiv='refresh' content='30;url=/'>";
+  else if (installingUpdate)    refresh = "<meta http-equiv='refresh' content='60;url=/'>";
 
   String html;
-  html.reserve(11800);
+  html.reserve(12800);
   html += "<html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'>" + refresh;
   html += "<style>body{font-family:sans-serif;background:#121212;color:#e0e0e0;padding:20px;max-width:400px;margin:auto;}";
   html += "input,select{width:100%;padding:10px;margin:8px 0;background:#222;color:#fff;border:1px solid #444;border-radius:4px;box-sizing:border-box;}";
@@ -903,8 +885,8 @@ void handleRoot() {
 
   html += "<div class='card'><h3>Updates</h3>";
   if (updateMessage.length()) html += "<p>" + htmlEscape(updateMessage) + "</p>";
-  if (!restartingForUpdate) html += "<form action='/update' method='POST'><button type='submit'>Check for updates now</button></form>";
-  html += "<p><small>Installs a newer release if there is one: the lamp restarts, installs it and restarts again, which takes about a minute.</small></p></div>";
+  if (!installingUpdate) html += "<form action='/update' method='POST'><button type='submit'>Check for updates now</button></form>";
+  html += "<p><small>Installs a newer release if there is one and restarts into it, which takes about a minute.</small></p></div>";
 
   html += "<div class='card'><h3>Settings</h3><form action='/save' method='POST'>";
   html += "<label>Price area:</label><select name='area'>";
@@ -953,6 +935,10 @@ void handleRoot() {
 
   html += "<h4>Device</h4>";
   html += "<p><label><input type='checkbox' name='autoupd' value='1'" + String(cfgAutoUpdate ? " checked" : "") + ">Install new releases automatically</label></p>";
+  html += checkbox("boardled", cfgBoardLed, "Show status on the board's blue LED",
+                   "A short blink every 10 seconds when everything works, on while fetching prices or updating, double blinks "
+                   "when fetching fails, and the lamp's address as counted blinks after it starts. Setting up wifi always "
+                   "blinks fast. Untick to keep it dark.");
   html += checkbox("testchan", cfgTestChannel, "Also install test versions (release candidates)",
                    "For trying new features before they are released, wirelessly. Test versions may have bugs. "
                    "Untick to go back: the lamp then moves on with the next stable release.");
@@ -963,6 +949,8 @@ void handleRoot() {
   html += "<input type='password' name='appw' minlength='8' maxlength='32' autocomplete='new-password' placeholder='" + String(strlen(cfgApPw) ? "(set)" : "(open portal)") + "'>";
 
   html += "<button type='submit'>Save changes</button></form></div>";
+  html += "<p><small>Elpriser tillhandahålls av <a style='color:#9ad' href='https://www.elprisetjustnu.se'>Elpriset just nu.se</a>. "
+          "Spot prices excl. VAT, grid fees and tax.</small></p>";
   html += "<p><small>Try the settings without a lamp in the <a style='color:#9ad' href='https://flysen.github.io/elpris-led/emulator/'>emulator</a>.</small></p></body></html>";
 
   server.send(200, "text/html", html);
@@ -994,6 +982,7 @@ void handleSave() {
   cfgNormTomorrow = server.hasArg("normtmrw");
   cfgAutoUpdate   = server.hasArg("autoupd");
   cfgTestChannel  = server.hasArg("testchan");
+  cfgBoardLed     = server.hasArg("boardled");
 
   if (server.hasArg("otapw") && server.arg("otapw").length() > 0) {
     String pw = server.arg("otapw");
@@ -1037,6 +1026,39 @@ void handleUpdate() {
 // =====================================================================
 //  Setup / loop
 // =====================================================================
+// Runs every 20 ms from a timer: sets the blue LED from the lamp's state and the time into its pattern
+void statusTick() {
+  static int lastState = -1;
+  static unsigned long patternStartMs = 0;
+  unsigned long nowMs = millis();
+  unsigned long until = addressUntilMs;
+  bool showingAddress = until != 0 && (long)(nowMs - until) < 0;
+  StatusLed state = statusLedState(statusPortal, statusConnected, cfgBoardLed, showingAddress, statusBusy, fetchFailing);
+  if (state != lastState) { lastState = state; patternStartMs = nowMs; }
+
+  const BlinkStep* steps;
+  int count;
+  if (state == STATUS_LED_ADDRESS) { steps = addressSteps; count = addressStepCount; }
+  else statusLedPattern(state, steps, count);
+  digitalWrite(STATUS_LED_PIN, blinkPatternOn(steps, count, nowMs - patternStartMs) ? HIGH : LOW);
+}
+
+// Shows the parts of the address that differ between devices on the network, ADDRESS_REPEATS times
+void showAddressOnStatusLed() {
+  IPAddress ip = WiFi.localIP(), mask = WiFi.subnetMask();
+  uint8_t ipBytes[4], maskBytes[4];
+  for (int i = 0; i < 4; i++) { ipBytes[i] = ip[i]; maskBytes[i] = mask[i]; }
+  int parts = addressPartsToShow(maskBytes);
+  addressStepCount = addressBlinkSteps(ipBytes, parts, BLINK_UNIT_MS, addressSteps, MAX_BLINK_STEPS);
+  unsigned long until = millis() + ADDRESS_REPEATS * blinkPatternMs(addressSteps, addressStepCount);
+  addressUntilMs = until ? until : 1;   // 0 means "not showing"
+}
+
+void onPortalStarted(WiFiManager* wm) {
+  (void)wm;
+  statusPortal = true;
+}
+
 // WiFiManager lives only inside this function, so its memory is freed once wifi is connected
 void connectWifi() {
   pArea.setValue(cfgArea, 5);
@@ -1054,6 +1076,7 @@ void connectWifi() {
   wm.addParameter(&pBnight);
   wm.addParameter(&pLeds);
   wm.setSaveConfigCallback(saveConfigCallback);
+  wm.setAPCallback(onPortalStarted);
   wm.setHostname(hostName);         // set before connecting, so the router learns the name
   wm.setConnectTimeout(30);         // try the saved network for 30 s
   wm.setConfigPortalTimeout(180);   // close the portal after 3 min and restart, so wifi is tried again
@@ -1064,6 +1087,8 @@ void connectWifi() {
     delay(3000);
     ESP.restart();
   }
+  statusPortal = false;
+  statusConnected = true;
 
   if (shouldSaveConfig) {
     int oldLeds = cfgNumLeds;
@@ -1084,6 +1109,8 @@ void setup() {
   clearCache();
   clearHistory();
   Serial.printf("Elpris-LED %s (%s)\n", FW_VERSION, BOARD_NAME);
+  pinMode(STATUS_LED_PIN, OUTPUT);
+  digitalWrite(STATUS_LED_PIN, LOW);
 
   if (!preferences.begin("elpris-config", false)) Serial.println("Could not open settings storage");
   loadSettings();
@@ -1097,11 +1124,10 @@ void setup() {
   // Name shown in the router, unique per lamp, e.g. elpris-led-a1b2c3
   snprintf(hostName, sizeof(hostName), "elpris-led-%s", chipSuffix().c_str());
 
+  statusTicker.attach_ms(20, statusTick);   // fast blinking while connecting
   connectWifi();
   Serial.printf("Connected as %s, IP address: %s\n", hostName, WiFi.localIP().toString().c_str());
-
-  // An update found before the restart is installed now, while nothing else uses memory
-  installPendingUpdate();
+  showAddressOnStatusLed();
 
   // http://elpris-led.local. With several lamps, only one answers to this name; use the IP for the others.
   if (MDNS.begin(MDNS_NAME)) {
@@ -1133,10 +1159,14 @@ void setup() {
 
 void loop() {
   if (otaActive) ArduinoOTA.handle();
-  if (mdnsActive) serviceMdns();
   server.handleClient();
   if (restartAtMs && (long)(millis() - restartAtMs) >= 0) ESP.restart();
-  if (restartingForUpdate) { delay(20); return; }   // keep the cyan dots until the restart
+  statusConnected = WiFi.status() == WL_CONNECTED;
+  if (installingUpdate) {   // keep the cyan dots; install once the web page has had its answer
+    if ((long)(millis() - installAtMs) >= 0) installUpdate();
+    delay(20);
+    return;
+  }
   serviceUpdate();
 
   time_t now = time(nullptr);

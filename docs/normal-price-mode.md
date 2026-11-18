@@ -35,7 +35,7 @@ The normal price is the average of all quarter prices for:
 
 Counting tomorrow means that today's colors can change when tomorrow's prices are fetched after lunch. A very expensive tomorrow raises the normal price, and today becomes greener, which matches the advice "do the laundry today". If you want today's colors to stay put during the day, tomorrow can be left out of the normal price.
 
-The history is fetched from the same address as today, with earlier dates, one request per day. Only a sum and a count per day are needed, not every quarter. ESP8266 only has room for 256 quarters in its cache, about 2.5 days, so the history should be kept as daily sums and not in the ring buffer.
+The history is fetched from the same address as today, with earlier dates, one request per day. Only a sum and a count per day are needed, not every quarter, so the history is kept as daily sums and not in the lamp's price cache.
 
 *Implementation:* `PriceSum` and `HistoryDay` in `elpris_logic.h`; `missingHistoryDay()`, `storeHistory()` and `rebuildNormal()` in the sketch. Past days are fetched after today and before tomorrow. A past day that can't be fetched is left out of the normal price, so it never blocks tomorrow's prices. Setting: *Count tomorrow in the normal price*, on by default as proposed.
 
@@ -79,4 +79,4 @@ All five are in the lamp's web UI under *Colors*.
 
 ## Simplifications in the emulator
 
-The emulator counts 96 quarters per day and ignores days with 23 or 25 hours. The example days and the seven past days are made up. Pasted real prices have no history, and then the normal price is based on today and tomorrow only. The clock starts at 14:00 so the tomorrow LEDs show directly. The lamp itself starts looking for tomorrow's prices at 13:30.
+The emulator counts 96 quarters per day and ignores days with 23 or 25 hours. The example days and the seven past days are made up. Pasted real prices have no history, and then the normal price is based on today and tomorrow only. The clock starts at 14:00 so the tomorrow LEDs show directly. The lamp itself starts looking for tomorrow's prices at 13:00.

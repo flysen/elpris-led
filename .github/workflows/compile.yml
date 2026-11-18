@@ -55,8 +55,6 @@ jobs:
       - name: Build ESP32 firmware
         run: bash scripts/build-firmware.sh dev esp32
 
-      - name: Build ESP8266 firmware
-        run: bash scripts/build-firmware.sh dev esp8266
 
       - name: Package install page and checksums
         run: bash scripts/package.sh dev

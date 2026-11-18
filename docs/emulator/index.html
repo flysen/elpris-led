@@ -260,7 +260,7 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
         <div class="ctl">
           <div class="lab"><label for="tomorrow">Tomorrow's prices</label></div>
           <select id="tomorrow">
-            <option value="auto">As the lamp: shown from 13:30, once published</option>
+            <option value="auto">As the lamp: shown from 13:00, once published</option>
             <option value="always">Always shown, if published</option>
             <option value="never">Never shown</option>
           </select>
@@ -270,8 +270,8 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
       </div>
 
       <div>
-        <h3>The board's blue LED <span class="chip">planned</span></h3>
-        <p class="help" style="margin-bottom:10px">A preview of how the small blue LED on the ESP32 board is planned to show what the lamp is doing, including its network address. It isn't in the lamp yet: try the blink patterns here first.</p>
+        <h3>The board's blue LED</h3>
+        <p class="help" style="margin-bottom:10px">From v5.0 the small blue LED on the ESP32 board shows what the lamp is doing, including its network address after it starts. The default settings below are the lamp's; the others are for comparison. It can be turned off in the lamp's web page.</p>
         <canvas id="board" class="board" aria-label="ESP32 board with its blue LED"></canvas>
         <p class="help" id="boardCaption" style="margin-bottom:12px"></p>
         <div class="ctl">
@@ -300,14 +300,14 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
           <div class="lab"><label for="okStyle">When working normally</label></div>
           <select id="okStyle">
             <option value="slow">Slow blink</option>
-            <option value="heartbeat" selected>A short blink every 10 seconds</option>
-            <option value="off">Off</option>
+            <option value="heartbeat" selected>A short blink every 10 seconds (as the lamp)</option>
+            <option value="off">Off (as the lamp with the LED turned off)</option>
           </select>
         </div>
         <div class="ctl">
           <div class="lab"><label for="blinkMs">Length of a short blink</label><output id="blinkMsOut"></output></div>
           <input id="blinkMs" type="range" min="150" max="500" step="25" value="250">
-          <p class="help">Longer is easier to count, shorter is quicker to show.</p>
+          <p class="help">Longer is easier to count, shorter is quicker to show. The lamp uses 250 ms.</p>
         </div>
       </div>
 
@@ -416,7 +416,7 @@ const PAST = 0, NOW = 1, FUTURE = 2;
 const reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 // Published every hour by .github/workflows/prices.yml (scripts/fetch-prices.sh)
 const PRICES_URL = "https://raw.githubusercontent.com/flysen/elpris-led/prices/prices.json";
-const TOMORROW_FROM = 13 * 60 + 30;   // the lamp starts looking for tomorrow's prices at 13:30
+const TOMORROW_FROM = 13 * 60;   // the lamp starts looking for tomorrow's prices at 13:00
 
 /* ---------- FastLED equivalents ---------- */
 const scale8 = (i, s) => (i * (1 + s)) >> 8;
@@ -756,9 +756,9 @@ function fitCanvas(c) {
   const ctx = c.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); return [ctx, w, h];
 }
 
-/* ---------- The board's blue LED (planned) ---------- */
-// A blink pattern is a list of [on, milliseconds] steps that repeats. Building it here first makes it easy to
-// try timings before the same patterns go into the firmware.
+/* ---------- The board's blue LED ---------- */
+// A blink pattern is a list of [on, milliseconds] steps that repeats. The lamp uses the same patterns and
+// timings (statusLedPattern() and addressBlinkSteps() in elpris_led/elpris_logic.h); keep them the same.
 let boardPattern = { steps: [[0, 1000]], total: 1000, caption: "" };
 function ipPartsToBlink() {
   const octets = $("ipAddr").value.trim().split(".").map(Number);
@@ -1011,7 +1011,7 @@ function summary(st) {
       lines.push(`<div>Tomorrow 08–17: ${cmpName(d.level)} (${signedOre(d.tm - d.td)}). Tomorrow 17–24: ${cmpName(e.level)} (${signedOre(e.tm - e.td)}).</div>`);
     }
   } else if (days[1] && S.tomorrow === "auto") {
-    lines.push(`<div class="sub">Tomorrow's prices are published. The lamp shows them from 13:30.</div>`);
+    lines.push(`<div class="sub">Tomorrow's prices are published. The lamp shows them from 13:00.</div>`);
   } else if (!days[1]) {
     lines.push(`<div class="sub">Tomorrow's prices are not published yet; they usually come after 13:00.</div>`);
   }

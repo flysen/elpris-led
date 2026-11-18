@@ -531,6 +531,117 @@ static void testTestChannel() {
   checkTrue("stable channel: v4.0-rc1 is not installed from v3.2", !isNewerVersion("v4.0-rc1", "v3.2"));
 }
 
+// ---------- The board's blue status LED ----------
+
+// The pattern as a string: "+" for each unit on, "." for each unit off, with the unit in ms
+static void patternString(const BlinkStep* steps, int n, int unit, char* out, size_t size) {
+  size_t o = 0;
+  for (int i = 0; i < n && o + 1 < size; i++) {
+    for (int k = 0; k < steps[i].ms / unit && o + 1 < size; k++) out[o++] = steps[i].on ? '+' : '.';
+  }
+  out[o] = '\0';
+}
+
+static void testStatusLedState() {
+  check("statusLedState: the portal blinks fast", statusLedState(true, false, true, false, false, false), STATUS_LED_PORTAL);
+  check("statusLedState: the portal blinks even with the LED turned off", statusLedState(true, false, false, false, false, false), STATUS_LED_PORTAL);
+  check("statusLedState: connecting blinks fast", statusLedState(false, false, true, false, false, false), STATUS_LED_CONNECTING);
+  check("statusLedState: connecting blinks even with the LED turned off", statusLedState(false, false, false, false, true, true), STATUS_LED_CONNECTING);
+  check("statusLedState: turned off once connected", statusLedState(false, true, false, true, true, true), STATUS_LED_OFF);
+  check("statusLedState: the address comes before fetching", statusLedState(false, true, true, true, true, false), STATUS_LED_ADDRESS);
+  check("statusLedState: the address comes before a fetch error", statusLedState(false, true, true, true, false, true), STATUS_LED_ADDRESS);
+  check("statusLedState: busy comes before a fetch error", statusLedState(false, true, true, false, true, true), STATUS_LED_BUSY);
+  check("statusLedState: fetch errors", statusLedState(false, true, true, false, false, true), STATUS_LED_FAILING);
+  check("statusLedState: everything works", statusLedState(false, true, true, false, false, false), STATUS_LED_OK);
+}
+
+static void testStatusLedPatterns() {
+  const BlinkStep* steps;
+  int n;
+  statusLedPattern(STATUS_LED_PORTAL, steps, n);
+  check("pattern portal: 100 ms on, 100 ms off", blinkPatternMs(steps, n), 200);
+  checkTrue("pattern portal: on at 50 ms, off at 150 ms", blinkPatternOn(steps, n, 50) && !blinkPatternOn(steps, n, 150));
+  statusLedPattern(STATUS_LED_CONNECTING, steps, n);
+  check("pattern connecting: same as the portal", blinkPatternMs(steps, n), 200);
+  statusLedPattern(STATUS_LED_BUSY, steps, n);
+  checkTrue("pattern busy: always on", blinkPatternOn(steps, n, 0) && blinkPatternOn(steps, n, 999) && blinkPatternOn(steps, n, 123456));
+  statusLedPattern(STATUS_LED_FAILING, steps, n);
+  check("pattern failing: a double blink every 1.95 s", blinkPatternMs(steps, n), 1950);
+  checkTrue("pattern failing: on, off, on, then a long pause",
+            blinkPatternOn(steps, n, 100) && !blinkPatternOn(steps, n, 200) && blinkPatternOn(steps, n, 350) && !blinkPatternOn(steps, n, 1000));
+  statusLedPattern(STATUS_LED_OK, steps, n);
+  check("pattern ok: one blink every 10 s", blinkPatternMs(steps, n), 10000);
+  checkTrue("pattern ok: on for 120 ms, then off", blinkPatternOn(steps, n, 100) && !blinkPatternOn(steps, n, 120) && !blinkPatternOn(steps, n, 9999));
+  checkTrue("pattern ok: repeats", blinkPatternOn(steps, n, 20050));
+  statusLedPattern(STATUS_LED_OFF, steps, n);
+  checkTrue("pattern off: never on", !blinkPatternOn(steps, n, 0) && !blinkPatternOn(steps, n, 500));
+  checkTrue("blinkPatternOn: an empty pattern is off", !blinkPatternOn(steps, 0, 0));
+  const BlinkStep zero[] = {{1, 0}};
+  checkTrue("blinkPatternOn: a pattern of length 0 is off", !blinkPatternOn(zero, 1, 0));
+}
+
+static void testAddressPartsToShow() {
+  const uint8_t m24[4] = {255, 255, 255, 0}, m16[4] = {255, 255, 0, 0}, m8[4] = {255, 0, 0, 0};
+  const uint8_t m20[4] = {255, 255, 240, 0}, m32[4] = {255, 255, 255, 255}, m0[4] = {0, 0, 0, 0};
+  check("addressPartsToShow: /24 shows the last part", addressPartsToShow(m24), 1);
+  check("addressPartsToShow: /16 shows the last two", addressPartsToShow(m16), 2);
+  check("addressPartsToShow: /8 shows the last three", addressPartsToShow(m8), 3);
+  check("addressPartsToShow: /20 shows the last two", addressPartsToShow(m20), 2);
+  check("addressPartsToShow: /32 still shows one part", addressPartsToShow(m32), 1);
+  check("addressPartsToShow: no mask shows the whole address", addressPartsToShow(m0), 4);
+}
+
+static void testAddressBlinkSteps() {
+  BlinkStep steps[MAX_BLINK_STEPS];
+  char s[600];
+
+  // 172.16.1.90 on a /16 network: "1" and "90", as in the emulator
+  const uint8_t ip[4] = {172, 16, 1, 90};
+  int n = addressBlinkSteps(ip, 2, 100, steps, MAX_BLINK_STEPS);
+  patternString(steps, n, 100, s, sizeof(s));
+  checkTrue("addressBlinkSteps: 1.90 is 1 blink, long pause, 9 blinks, pause, one long blink, end pause",
+            strcmp(s, "+..........."
+                      "+.+.+.+.+.+.+.+.+.....++++."
+                      "....................") == 0);
+  check("addressBlinkSteps: 1.90 takes 5.9 s with 100 ms blinks", blinkPatternMs(steps, n), 5900);
+
+  // /24 shows only the last part
+  n = addressBlinkSteps(ip, 1, 100, steps, MAX_BLINK_STEPS);
+  patternString(steps, n, 100, s, sizeof(s));
+  checkTrue("addressBlinkSteps: 90 on a /24 network", strcmp(s, "+.+.+.+.+.+.+.+.+.....++++.....................") == 0);
+
+  // Every digit is counted right: the number of blinks equals the digit, 0 is one long blink
+  const uint8_t all[4] = {0, 9, 105, 255};
+  n = addressBlinkSteps(all, 4, 250, steps, MAX_BLINK_STEPS);
+  int blinks = 0, longBlinks = 0;
+  for (int i = 0; i < n; i++) {
+    if (!steps[i].on) continue;
+    if (steps[i].ms == 250) blinks++;
+    else if (steps[i].ms == 1000) longBlinks++;
+  }
+  check("addressBlinkSteps: 0.9.105.255 has 0+9+1+5+2+5+5 short blinks", blinks, 27);
+  check("addressBlinkSteps: 0.9.105.255 has two long blinks (the zeros)", longBlinks, 2);
+  checkTrue("addressBlinkSteps: the pattern ends off", !steps[n - 1].on);
+
+  // The longest address fits in MAX_BLINK_STEPS
+  const uint8_t longest[4] = {199, 199, 199, 199};
+  n = addressBlinkSteps(longest, 4, 250, steps, MAX_BLINK_STEPS);
+  checkTrue("addressBlinkSteps: 199.199.199.199 fits", n < MAX_BLINK_STEPS);
+  checkTrue("addressBlinkSteps: every step fits in 16 bits at 250 ms", blinkPatternMs(steps, n) > 0 && steps[n - 1].ms == 5000);
+
+  // A too small buffer is never overrun
+  BlinkStep few[5];
+  check("addressBlinkSteps: stops at the buffer size", addressBlinkSteps(longest, 4, 250, few, 5), 5);
+
+  // Parts outside 1-4 are clamped
+  n = addressBlinkSteps(ip, 0, 100, steps, MAX_BLINK_STEPS);
+  int one = addressBlinkSteps(ip, 1, 100, steps + 128, 128);
+  check("addressBlinkSteps: 0 parts is shown as 1", n, one);
+  n = addressBlinkSteps(ip, 9, 100, steps, MAX_BLINK_STEPS);
+  int four = addressBlinkSteps(ip, 4, 100, steps + 128, 128);
+  check("addressBlinkSteps: 9 parts is shown as 4", n, four);
+}
+
 int main() {
   useTimeZone(SWEDEN_TZ);   // same as the lamp's default
 
@@ -558,6 +669,10 @@ int main() {
   testVersions();
   testParseRelease();
   testTestChannel();
+  testStatusLedState();
+  testStatusLedPatterns();
+  testAddressPartsToShow();
+  testAddressBlinkSteps();
 
   printf("\n%d OK, %d FAIL\n", passed, failed);
   return failed ? 1 : 0;

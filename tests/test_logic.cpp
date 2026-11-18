@@ -48,6 +48,12 @@ static void testParseIso() {
   check("parseIso: Z is treated as UTC", t, utc(2026, 1, 1, 0, 15));
   parseIso("2026-01-01T06:00:00", t);
   check("parseIso: no offset is treated as UTC", t, utc(2026, 1, 1, 6, 0));
+  parseIso("2026-01-01T00:00:00-05:00", t);
+  check("parseIso: negative offset -05:00 gives correct UTC", t, utc(2026, 1, 1, 5, 0));
+  parseIso("2026-01-01T23:30:00-03:30", t);
+  check("parseIso: negative offset with minutes, next day in UTC", t, utc(2026, 1, 2, 3, 0));
+  parseIso("2026-06-01T12:00:00+05:30", t);
+  check("parseIso: positive offset with minutes", t, utc(2026, 6, 1, 6, 30));
   checkTrue("parseIso: garbage returns false", !parseIso("not a date", t));
 }
 

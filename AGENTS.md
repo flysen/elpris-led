@@ -41,6 +41,7 @@ Elpris-LED: firmware for an ESP32 (and, in maintenance mode, ESP8266) driving a 
 No pull request without test cases. In the pull request's *Test cases* section, list every test case as a checkbox and tick it when it has passed; a pull request is ready when all are ticked.
 
 - **Automated** wherever there is logic: name the tests added or changed in `tests/test_logic.cpp`, and always "CI passes: tests, lint, firmware".
+- **Coverage:** the tests must run at least **95 % of the lines** and **90 % of the branches** in `elpris_logic.h`. CI measures it on every pull request (`make coverage`, numbers on the run's summary page) and fails below the limits. Add tests with new logic so the numbers don't drop; don't lower the limits to make a pull request pass.
 - **By hand** for what can't be tested automatically, written so someone else can repeat it: what to do and what should happen. For example "Emulator: choose 3 levels → the legend shows green, yellow, red", or "Lamp: Check for updates now → restarts and shows the new version".
 - Changes to documentation only still get a test case, such as "Links in the README open the right pages".
 
@@ -60,6 +61,7 @@ No pull request without test cases. In the pull request's *Test cases* section, 
 ```bash
 make test                                    # unit tests
 make test-sanitize                           # the same with AddressSanitizer and UBSan
+make coverage                                # how much of elpris_logic.h the tests run
 bash scripts/arduino-deps.sh                 # install the pinned ESP32/ESP8266 cores and libraries
 bash scripts/build-firmware.sh dev esp32     # build one board into build-out/<board> and dist/
 bash scripts/package.sh dev                  # install page, emulator and manifest into site/

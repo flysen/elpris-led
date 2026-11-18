@@ -9,6 +9,10 @@ test: tests/test_logic
 test-sanitize: tests/test_logic_san
 	./tests/test_logic_san
 
+# How much of elpris_logic.h the tests run; fails below the limits in scripts/coverage.sh
+coverage:
+	bash scripts/coverage.sh
+
 tests/test_logic: tests/test_logic.cpp elpris_led/elpris_logic.h
 	$(CXX) $(CXXFLAGS) -o $@ tests/test_logic.cpp
 
@@ -18,4 +22,4 @@ tests/test_logic_san: tests/test_logic.cpp elpris_led/elpris_logic.h
 clean:
 	rm -f tests/test_logic tests/test_logic_san
 
-.PHONY: test test-sanitize clean
+.PHONY: test test-sanitize coverage clean

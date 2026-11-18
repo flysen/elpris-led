@@ -21,6 +21,8 @@ jobs:
         run: make test
       - name: Unit tests with sanitizers
         run: make test-sanitize
+      - name: Test coverage
+        run: make coverage
 
   lint:
     runs-on: ubuntu-24.04

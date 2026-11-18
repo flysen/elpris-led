@@ -193,6 +193,7 @@ The logic that doesn't need the hardware is in `elpris_led/elpris_logic.h`, shar
 ```bash
 make test            # unit tests
 make test-sanitize   # the same tests with AddressSanitizer and UndefinedBehaviorSanitizer
+make coverage        # how much of elpris_logic.h the tests run: at least 95 % of lines, 90 % of branches
 ```
 
 To add a time zone, add it to `TIME_ZONES` in `elpris_logic.h` and its expected offsets to `testTimeZones()` in `tests/test_logic.cpp`; the tests fail if a listed zone has no expected values.
@@ -201,7 +202,7 @@ To add a time zone, add it to `TIME_ZONES` in `elpris_logic.h` and its expected 
 
 Every pull request and every push to `main` runs:
 
-- **tests:** the unit tests, normally and with sanitizers.
+- **tests:** the unit tests, normally and with sanitizers, and their coverage of `elpris_logic.h`. The numbers are shown on the run's summary page; the check fails below 95 % of lines or 90 % of branches.
 - **lint:** shellcheck on the build scripts.
 - **firmware:** the same build and packaging as a release, for both ESP32 and ESP8266, with pinned dependencies. For each board it checks that the app uses less than 95 % of its space (warning above 85 %), that the version is in the binary, and that the install page manifest is valid. The sizes are shown on the run's summary page, and the firmware is attached to the run for 14 days so you can try a pull request on your own lamp before releasing it.
 

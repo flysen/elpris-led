@@ -2,8 +2,8 @@
 # Builds the firmware for one board, checks it and puts the release and install page files in place.
 # Usage: scripts/build-firmware.sh <version> <board>
 #   version: a release tag like v2.1, or "dev" for CI builds
-#   board:   esp32 or esp8266
-# Run it once per board, then scripts/package.sh <version> to write manifest.json and SHA256SUMS.
+#   board:   esp32 (the only board from v5.0; ESP8266 support ended with v4.0.5)
+# Then run scripts/package.sh <version> to write manifest.json and SHA256SUMS.
 set -euo pipefail
 
 VERSION="${1:?usage: $0 <version> <board>}"
@@ -17,11 +17,9 @@ case "$BOARD" in
     FQBN="esp32:esp32:esp32:PartitionScheme=min_spiffs"
     APP_MAX=1966080 ;;
   esp8266)
-    # 4 MB flash: up to 1 MB app, 1 MB LittleFS for settings, the rest is room for OTA.
-    FQBN="esp8266:esp8266:nodemcuv2:eesz=4M1M"
-    APP_MAX=1044464 ;;
+    echo "::error::ESP8266 support ended with v4.0.5. Build v4.0.5 for ESP8266 lamps."; exit 1 ;;
   *)
-    echo "::error::Unknown board $BOARD (use esp32 or esp8266)"; exit 1 ;;
+    echo "::error::Unknown board $BOARD (use esp32)"; exit 1 ;;
 esac
 SIZE_WARN_PCT=85  # warn above this share of the app space
 SIZE_FAIL_PCT=95  # fail above this share, to keep a safety margin before updates break
@@ -82,42 +80,36 @@ grep -q -a -F "$VERSION" "$B.bin" || { echo "::error::Version $VERSION not found
 FULL="dist/elpris-led-${VERSION}-${BOARD}-full.bin"
 OTA="dist/elpris-led-${VERSION}-${BOARD}-ota.bin"
 
-if [ "$BOARD" = "esp32" ]; then
-  for f in "$B.bootloader.bin" "$B.partitions.bin"; do
-    test -s "$f" || { echo "::error::Missing build output: $f"; exit 1; }
-  done
-  BOOT_APP0=$(find ~/.arduino15/packages/esp32/hardware -name boot_app0.bin -print -quit)
-  test -n "$BOOT_APP0" || { echo "::error::boot_app0.bin not found"; exit 1; }
+for f in "$B.bootloader.bin" "$B.partitions.bin"; do
+  test -s "$f" || { echo "::error::Missing build output: $f"; exit 1; }
+done
+BOOT_APP0=$(find ~/.arduino15/packages/esp32/hardware -name boot_app0.bin -print -quit)
+test -n "$BOOT_APP0" || { echo "::error::boot_app0.bin not found"; exit 1; }
 
-  # Install page: separate parts, so wifi and settings are kept on update
-  cp "$B.bootloader.bin" "$SITE_FW/bootloader.bin"
-  cp "$B.partitions.bin" "$SITE_FW/partitions.bin"
-  cp "$BOOT_APP0"        "$SITE_FW/boot_app0.bin"
-  cp "$B.bin"            "$SITE_FW/elpris-led.bin"
-  # Lamps running v2.0 download firmware/elpris-led.bin; keep that path working for them
-  cp "$B.bin"            site/firmware/elpris-led.bin
+# Install page: separate parts, so wifi and settings are kept on update
+cp "$B.bootloader.bin" "$SITE_FW/bootloader.bin"
+cp "$B.partitions.bin" "$SITE_FW/partitions.bin"
+cp "$BOOT_APP0"        "$SITE_FW/boot_app0.bin"
+cp "$B.bin"            "$SITE_FW/elpris-led.bin"
+# Lamps running v2.0 download firmware/elpris-led.bin; keep that path working for them
+cp "$B.bin"            site/firmware/elpris-led.bin
 
-  # Full image for esptool (flash at 0x0)
-  MERGED="$B.merged.bin"
-  if [ ! -f "$MERGED" ]; then
-    ESPTOOL=$(find ~/.arduino15/packages/esp32/tools -name esptool -type f -perm -u+x -print -quit)
-    test -n "$ESPTOOL" || { echo "::error::esptool not found"; exit 1; }
-    "$ESPTOOL" --chip esp32 merge_bin -o "$MERGED" \
-      0x1000 "$B.bootloader.bin" \
-      0x8000 "$B.partitions.bin" \
-      0xe000 "$BOOT_APP0" \
-      0x10000 "$B.bin"
-  fi
-  MERGED_SIZE=$(stat -c %s "$MERGED")
-  if [ "$MERGED_SIZE" -lt $((0x10000 + SIZE)) ]; then
-    echo "::error::The full image is smaller than expected ($MERGED_SIZE bytes)"; exit 1
-  fi
-  cp "$MERGED" "$FULL"
-else
-  # On ESP8266 the app image includes the boot loader and is flashed at 0x0
-  cp "$B.bin" "$SITE_FW/elpris-led.bin"
-  cp "$B.bin" "$FULL"
+# Full image for esptool (flash at 0x0)
+MERGED="$B.merged.bin"
+if [ ! -f "$MERGED" ]; then
+  ESPTOOL=$(find ~/.arduino15/packages/esp32/tools -name esptool -type f -perm -u+x -print -quit)
+  test -n "$ESPTOOL" || { echo "::error::esptool not found"; exit 1; }
+  "$ESPTOOL" --chip esp32 merge_bin -o "$MERGED" \
+    0x1000 "$B.bootloader.bin" \
+    0x8000 "$B.partitions.bin" \
+    0xe000 "$BOOT_APP0" \
+    0x10000 "$B.bin"
 fi
+MERGED_SIZE=$(stat -c %s "$MERGED")
+if [ "$MERGED_SIZE" -lt $((0x10000 + SIZE)) ]; then
+  echo "::error::The full image is smaller than expected ($MERGED_SIZE bytes)"; exit 1
+fi
+cp "$MERGED" "$FULL"
 cp "$B.bin" "$OTA"
 
 echo "Built Elpris-LED ${VERSION} for ${BOARD}"

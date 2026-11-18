@@ -4,15 +4,15 @@ This file tells AI assistants (Claude Code, GitHub Copilot, Codex, Cursor and ot
 
 ## What this is
 
-Elpris-LED: firmware for an ESP32 (and, in maintenance mode, ESP8266) driving a WS2812B LED strip that shows the day's Swedish spot electricity prices from [elprisetjustnu.se](https://www.elprisetjustnu.se) as colors. Users install prebuilt firmware from the install page and the lamps update themselves from GitHub releases. The lamps run unattended in people's homes for years, so reliability and backwards compatibility matter more than new features.
+Elpris-LED: firmware for an ESP32 driving a WS2812B LED strip that shows the day's Swedish spot electricity prices from [elprisetjustnu.se](https://www.elprisetjustnu.se) as colors. Users install prebuilt firmware from the install page and the lamps update themselves from GitHub releases. The lamps run unattended in people's homes for years, so reliability and backwards compatibility matter more than new features.
 
 ## Where things are
 
 | Path | What it is |
 |---|---|
 | `elpris_led/elpris_led.ino` | The sketch: wifi, fetching prices, updates, web UI, drawing the strip |
-| `elpris_led/elpris_logic.h` | Pure logic with no Arduino dependencies: time and DST, slots, LED mapping, color levels, normal price, versions. Shared by both boards and tested |
-| `elpris_led/platform.h` | The few differences between ESP32 and ESP8266 (includes, data pin, settings storage, mDNS, OTA, cache size) |
+| `elpris_led/elpris_logic.h` | Pure logic with no Arduino dependencies: time and DST, slots, LED mapping, color levels, normal price, versions, the blue status LED's patterns. Tested |
+| `elpris_led/platform.h` | Board-specific includes, pins and small helpers (ESP32) |
 | `tests/test_logic.cpp`, `Makefile` | Unit tests for `elpris_logic.h`, run on a normal computer |
 | `scripts/` | Build, packaging, release-tag check, dependency pins (`arduino-deps.sh`) and the emulator's price fetcher |
 | `.github/workflows/` | `compile.yml` (CI), `release.yml` (tag → release + install page), `prices.yml` (hourly prices for the emulator) |
@@ -27,13 +27,13 @@ Elpris-LED: firmware for an ESP32 (and, in maintenance mode, ESP8266) driving a 
 1. **English only** in the repository: code, comments, UI text, docs, commit messages and pull requests. (The maintainers may talk to you in Swedish; answer them in their language, but write English into the repo.)
 2. **No passwords or keys in the code.** OTA and config portal passwords are set in the lamp's web UI and stored on the device.
 3. **Lamps in the field must keep working after an update:**
-   - Never change the **flash layout**: ESP32 *Minimal SPIFFS* (`min_spiffs`), ESP8266 `eesz=4M1M`. Over-the-air updates can't change it.
+   - Never change the **flash layout**: ESP32 *Minimal SPIFFS* (`min_spiffs`). Over-the-air updates can't change it.
    - Never rename the **update files**: `firmware/<board>/elpris-led.bin` on the install page, `firmware/elpris-led.bin` (kept for v2.0 lamps), and `elpris-led-<tag>-<board>-ota.bin` / `-full.bin` in releases.
    - **Settings from older versions must still load.** Settings keys (namespace `elpris-config`, keys at most 15 characters) are never reused for something else; when a setting changes shape, migrate it (see `initialPastPercent()`), with tests.
    - Don't change the update URLs or how versions are compared without a plan for every lamp already out there.
 4. **Every pull request has test cases** (see below). New logic goes in `elpris_logic.h` with automated tests in `tests/test_logic.cpp`: boundaries, daylight saving days (23/25 hours, 92/100 quarters) and edge cases. Keep hardware code thin.
 5. **The emulator mirrors the lamp.** When what the strip shows changes, update `docs/emulator/index.html` in the same pull request.
-6. **ESP8266 is in maintenance mode:** fixes only, no new features. It has about 30 kB free before a TLS connection, which needs most of it; don't add anything that uses more memory on ESP8266. New features are for ESP32.
+6. **ESP32 only.** ESP8266 support ended with v4.0.5; don't add it back. ESP8266 lamps on v4.0.x find newer releases, restart to install them and find no ESP8266 file, so they keep running v4.0.x (a short restart every six hours). The board's blue LED (GPIO2) and the emulator's preview of it use the same patterns: change both together.
 7. **Prices are spot prices excluding VAT, grid fees and tax**, from elprisetjustnu.se. Credit them as *"Elpriser tillhandahålls av Elpriset just nu.se"* with a link where prices are shown publicly.
 
 ## Test cases
@@ -62,7 +62,7 @@ No pull request without test cases. In the pull request's *Test cases* section, 
 make test                                    # unit tests
 make test-sanitize                           # the same with AddressSanitizer and UBSan
 make coverage                                # how much of elpris_logic.h the tests run
-bash scripts/arduino-deps.sh                 # install the pinned ESP32/ESP8266 cores and libraries
+bash scripts/arduino-deps.sh                 # install the pinned ESP32 core and libraries
 bash scripts/build-firmware.sh dev esp32     # build one board into build-out/<board> and dist/
 bash scripts/package.sh dev                  # install page, emulator and manifest into site/
 ```
@@ -74,9 +74,9 @@ CI runs the same on every pull request. Local and CI builds report version `dev`
 - **Arduino prototypes:** the Arduino builder declares the sketch's functions near the top of the file, before types defined in the sketch. A struct used in a function signature must be defined in a header (see `HistoryDay` in `elpris_logic.h`).
 - **`DATA_PIN` is a `constexpr`, not a macro;** FastLED uses that name internally.
 - **Default arguments** on sketch functions can break the generated prototypes; pass all arguments explicitly.
-- **ESP8266 and TLS:** a response that stops part-way usually means memory ran out during the connection, not a server problem. The web UI shows how many bytes arrived.
+- **Timer callbacks:** the blue LED is driven by a `Ticker`, which runs in another task. It only reads flags (`volatile`) and writes the LED; keep it that way, no network, strip or `String` work in it.
 - **Release candidates** (`vX.Y-rcN`) are pre-releases: the install page and normal lamps ignore them; lamps with the test channel install them.
 
 ## Releases
 
-Maintainers release from the browser: rename *Unreleased* in `CHANGELOG.md` to the version in a pull request, then *Releases → Draft a new release*, tag `vX.Y[.Z]` (or `vX.Y-rcN` as a pre-release) on `main`, and paste the changelog section as release notes. `release.yml` checks the tag, runs the tests, builds both boards and publishes the release and the install page.
+Maintainers release from the browser: rename *Unreleased* in `CHANGELOG.md` to the version in a pull request, then *Releases → Draft a new release*, tag `vX.Y[.Z]` (or `vX.Y-rcN` as a pre-release) on `main`, and paste the changelog section as release notes. `release.yml` checks the tag, runs the tests, builds the firmware and publishes the release and the install page.

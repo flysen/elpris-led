@@ -7,13 +7,11 @@ set -euo pipefail
 VERSION="${1:?usage: $0 <version>}"
 cd "$(dirname "$0")/.."
 
-for b in esp32 esp8266; do
-  test -s "site/firmware/$b/elpris-led.bin" || { echo "::error::No $b build found. Run scripts/build-firmware.sh $VERSION $b first."; exit 1; }
-done
+test -s "site/firmware/esp32/elpris-led.bin" || { echo "::error::No esp32 build found. Run scripts/build-firmware.sh $VERSION esp32 first."; exit 1; }
 
 cp -r docs/. site/
 
-# The installer reads the connected board's chip and picks the matching build
+# ESP32 only from v5.0. The installer reads the connected board's chip and refuses other chips.
 cat > site/manifest.json << EOF
 {
   "name": "Elpris-LED",
@@ -27,12 +25,6 @@ cat > site/manifest.json << EOF
         { "path": "firmware/esp32/partitions.bin", "offset": 32768 },
         { "path": "firmware/esp32/boot_app0.bin", "offset": 57344 },
         { "path": "firmware/esp32/elpris-led.bin", "offset": 65536 }
-      ]
-    },
-    {
-      "chipFamily": "ESP8266",
-      "parts": [
-        { "path": "firmware/esp8266/elpris-led.bin", "offset": 0 }
       ]
     }
   ]

@@ -4,6 +4,16 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+## v5.0
+
+- **ESP32 only.** ESP8266 boards are no longer supported. An ESP8266 lamp keeps running v4.0.5 but gets no more updates; every six hours it restarts briefly when it finds a newer release it can't install. Move the lamp to an ESP32 board to get new versions. The install page only installs on ESP32.
+- **The board's blue LED shows the lamp's status:** fast blinking while setting up wifi, the end of the lamp's IP address as counted blinks three times after it starts, on while fetching prices or updating, double blinks when fetching fails, and a short blink every 10 seconds when everything works. The same patterns as in the emulator. It can be turned off in the web UI.
+- **Updates install without an extra restart:** the lamp downloads and installs a new release right away and restarts once into it.
+- **Tomorrow's prices are fetched from 13:00** instead of 13:30, so they show up sooner after they are published.
+- The lamp keeps about ten days of 15-minute prices instead of five.
+- The lamp's web page, the install page and the README credit the prices: *Elpriser tillhandahålls av Elpriset just nu.se*.
+- Cleaned-up README: ESP32 only, a section on the blue LED and how to read the address.
+
 ## v4.0.5
 
 - **Emulator:** a preview of the blue status LED planned for the ESP32 board (under *Advanced*): fast blinking while setting up wifi, the lamp's network address as counted blinks, and signals for working normally, fetching prices, fetch errors and updates. Try the patterns there before they go into the lamp. No change in the lamps' firmware.

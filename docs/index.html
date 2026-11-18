@@ -94,18 +94,14 @@
 
   <section class="install">
     <h2>Install</h2>
-    <p>Connect your board to the computer with a USB cable and click the button. The page detects which chip the board has and installs the right firmware. Installing works in Chrome and Edge on a computer.</p>
-    <p class="small">Supported boards:</p>
-    <ul class="small">
-      <li><strong>ESP32</strong> with 4 MB flash, e.g. ESP32 DevKit / WROOM-32 (not C3, S2 or S3). Strip data on GPIO16 (D16).</li>
-      <li><strong>ESP8266</strong> with 4 MB flash, e.g. NodeMCU or Wemos D1 mini. Strip data on GPIO2 (D4).</li>
-    </ul>
+    <p>Connect your board to the computer with a USB cable and click the button. Installing works in Chrome and Edge on a computer.</p>
+    <p class="small">Board: an <strong>ESP32</strong> with 4 MB flash, e.g. ESP32 DevKit / WROOM-32 (not C3, S2 or S3). Strip data on GPIO16 (D16 or RX2). ESP8266 boards are no longer supported; lamps on ESP8266 stay on v4.0.5.</p>
     <esp-web-install-button manifest="manifest.json">
       <button slot="activate">Install on your board</button>
       <span slot="unsupported" class="notice">This browser can't install over USB. Open the page in Chrome or Edge on a computer.</span>
       <span slot="not-allowed" class="notice">Installing requires the page to be opened over https.</span>
     </esp-web-install-button>
-    <p class="small after-button">Choose to erase the device on the first install. When updating, wifi and settings are kept as long as you don't erase.</p>
+    <p class="small after-button">Choose to erase the device on the first install. Some ESP32 boards need a press on their EN/RST button afterwards before they start. When updating, wifi and settings are kept as long as you don't erase.</p>
     <p class="small">No port to choose? Use a USB cable that carries data, not just power. On Windows and Mac the computer may need a driver for the board's USB chip, usually CP210x or CH340. On Linux, your user must be in the <code>dialout</code> group.</p>
   </section>
 
@@ -121,7 +117,7 @@
   </section>
 
   <footer>
-    <p>Parts list, wiring diagram and source code are on <a href="https://github.com/flysen/elpris-led">GitHub</a>. Prices come from <a href="https://www.elprisetjustnu.se">elprisetjustnu.se</a>. Try the color modes and settings in the <a href="emulator/">emulator</a>, by <a href="https://github.com/sealjo">@sealjo</a>.</p>
+    <p>Parts list, wiring diagram and source code are on <a href="https://github.com/flysen/elpris-led">GitHub</a>. Elpriser tillhandahålls av <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>. Try the color modes and settings in the <a href="emulator/">emulator</a>, by <a href="https://github.com/sealjo">@sealjo</a>.</p>
     <p id="version"></p>
   </footer>
 </main>

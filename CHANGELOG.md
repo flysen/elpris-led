@@ -4,7 +4,7 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
-Planned as **v5.0**.
+## v5.0
 
 - **ESP32 only.** ESP8266 boards are no longer supported. An ESP8266 lamp keeps running v4.0.5 but gets no more updates; every six hours it restarts briefly when it finds a newer release it can't install. Move the lamp to an ESP32 board to get new versions. The install page only installs on ESP32.
 - **The board's blue LED shows the lamp's status:** fast blinking while setting up wifi, the end of the lamp's IP address as counted blinks three times after it starts, on while fetching prices or updating, double blinks when fetching fails, and a short blink every 10 seconds when everything works. The same patterns as in the emulator. It can be turned off in the web UI.

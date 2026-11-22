@@ -864,6 +864,34 @@ static void testJsonHelpers() {
   checkTrue("jsonStringAt: no closing quote is not a string", !jsonStringAt(str, str + 5, buf, sizeof(buf)));
 }
 
+// ---------- Reading HTTP answers and firmware downloads ----------
+
+static void testHttpBodyComplete() {
+  checkTrue("httpBodyComplete: all of the given length arrived", httpBodyComplete(13607, 13607, false));
+  checkTrue("httpBodyComplete: more than the given length is complete", httpBodyComplete(100, 120, false));
+  checkTrue("httpBodyComplete: less than the given length is not, even if closed", !httpBodyComplete(13607, 571, true));
+  checkTrue("httpBodyComplete: a length of 0 with nothing is complete", httpBodyComplete(0, 0, false));
+  checkTrue("httpBodyComplete: no length, closed by the server is complete", httpBodyComplete(-1, 13607, true));
+  checkTrue("httpBodyComplete: no length, gave up waiting is not", !httpBodyComplete(-1, 13607, false));
+}
+
+static void testFirmwareChecks() {
+  const uint8_t good[] = {0xE9, 0x06, 0x02, 0x2f};
+  const uint8_t html[] = {'<', '!', 'D', 'O'};
+  checkTrue("firmwareHeaderOk: ESP32 firmware starts with 0xE9", firmwareHeaderOk(good, sizeof(good)));
+  checkTrue("firmwareHeaderOk: an HTML page is not firmware", !firmwareHeaderOk(html, sizeof(html)));
+  checkTrue("firmwareHeaderOk: nothing read yet is not firmware", !firmwareHeaderOk(good, 0));
+  checkTrue("firmwareHeaderOk: no buffer is not firmware", !firmwareHeaderOk(nullptr, 4));
+
+  const long slot = 1966080;   // the Minimal SPIFFS app slot
+  checkTrue("firmwareSizeProblem: v5.1.1's 1331840 bytes fit", firmwareSizeProblem(1331840, slot) == nullptr);
+  checkTrue("firmwareSizeProblem: exactly the slot fits", firmwareSizeProblem(slot, slot) == nullptr);
+  checkTrue("firmwareSizeProblem: bigger than the slot", firmwareSizeProblem(slot + 1, slot) != nullptr);
+  checkTrue("firmwareSizeProblem: no size given", firmwareSizeProblem(-1, slot) != nullptr);
+  checkTrue("firmwareSizeProblem: size 0", firmwareSizeProblem(0, slot) != nullptr);
+  checkTrue("firmwareSizeProblem: a tiny file is not firmware", firmwareSizeProblem(1200, slot) != nullptr);
+}
+
 int main() {
   useTimeZone(SWEDEN_TZ);   // same as the lamp's default
 
@@ -891,6 +919,8 @@ int main() {
   testParsePricesDst();
   testParsePricesOdd();
   testJsonHelpers();
+  testHttpBodyComplete();
+  testFirmwareChecks();
   testResponseSnippet();
   testParseVersion();
   testVersions();

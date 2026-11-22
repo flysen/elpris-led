@@ -337,29 +337,69 @@ String describeFetchError(int code) {
   return HTTPClient::errorToString(code);   // connection, TLS and timeout errors
 }
 
+// =====================================================================
+//  Reading HTTP answers
+// =====================================================================
+// Every request reads its answer itself, as fast as it arrives, and gives up after a fixed time, so a slow
+// or odd server can never hold up the lamp: the web page, OTA and the strip keep working.
+// HTTP/1.0 with "Connection: close": the server can't split the answer into chunks and closes the connection
+// when it has sent it, so the end is clear. (v5.1.1 used HTTPClient::getString() over HTTP/1.1, where the
+// price server keeps the connection open, and the lamp could hang for minutes.)
+const unsigned long HTTP_READ_DEADLINE_MS = 15000;   // longest time to read an answer
+const size_t        HTTP_MAX_BODY         = 65536;   // longest answer kept (a day of prices is about 13 kB)
+
+// Starts a GET request with the lamp's usual settings. Returns the HTTP status or a negative error.
+int startGet(HTTPClient& http, WiFiClientSecure& client, const String& url, const char* accept) {
+  client.setInsecure();
+  setHttpTimeouts(http);
+  http.useHTTP10(true);
+  http.setReuse(false);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);   // GitHub release files redirect to a download host
+  if (!http.begin(client, url)) return FETCH_ERR_BEGIN;
+  http.setUserAgent(USER_AGENT);
+  if (accept) http.addHeader("Accept", accept);
+  const char* headerKeys[] = {"Content-Type"};
+  http.collectHeaders(headerKeys, 1);
+  return http.GET();
+}
+
+// Reads the rest of the answer into body. Returns true if it ended properly: the length the server gave was
+// reached, or the server closed the connection, before the deadline.
+bool readBody(HTTPClient& http, String& body) {
+  auto& stream = http.getStream();
+  int expected = http.getSize();
+  body = "";
+  body.reserve(expected > 0 && expected < (int)HTTP_MAX_BODY ? expected + 1 : 16384);
+  uint8_t buf[512];
+  unsigned long start = millis();
+  bool closed = false;
+  while ((long)(millis() - start) < (long)HTTP_READ_DEADLINE_MS && body.length() < HTTP_MAX_BODY) {
+    int avail = stream.available();
+    if (avail > 0) {
+      int n = stream.read(buf, avail < (int)sizeof(buf) ? avail : (int)sizeof(buf));
+      if (n > 0) body.concat((const char*)buf, n);
+      if (expected > 0 && (long)body.length() >= expected) break;
+      continue;
+    }
+    if (!stream.connected()) { closed = true; break; }   // the server is done and everything is read
+    delay(2);
+  }
+  return httpBodyComplete(expected, body.length(), closed);
+}
+
 // Fetches one day of prices. With sumOnly, the prices are added to that sum (for past days in the
 // normal price) instead of being stored per quarter in the cache. Returns true if a whole answer with
 // prices arrived; the caller also checks that it covers the whole day.
 bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   lastResponseInfo = "";
   WiFiClientSecure client;
-  client.setInsecure();
   HTTPClient http;
-  setHttpTimeouts(http);
-  // HTTP/1.1, so the server says where the response ends (its length, or chunks) and getString() reads all of
-  // it. With HTTP/1.0 the price server sends no length and closes the connection right after a cached
-  // response, which cut the reading off after a few prices (v5.0-v5.1).
-  if (!http.begin(client, url)) { code = FETCH_ERR_BEGIN; return false; }
-  http.setUserAgent(USER_AGENT);
-  http.addHeader("Accept", "application/json");
-  const char* headerKeys[] = {"Content-Type"};
-  http.collectHeaders(headerKeys, 1);
-
-  code = http.GET();
+  code = startGet(http, client, url, "application/json");
   if (code != HTTP_CODE_OK) { http.end(); return false; }
   int expected = http.getSize();   // -1 if the server didn't say
   String type = http.header("Content-Type");
-  String body = http.getString();  // the whole response first, about 13 kB for a day of 15-minute prices
+  String body;
+  bool ended = readBody(http, body);
   http.end();
 
   // Read by parsePrices() in elpris_logic.h, which is tested with whole, cut-off and odd answers
@@ -367,6 +407,7 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   bool complete = false;
   int count = parsePrices(body.c_str(), body.length(), entries, MAX_PRICE_ENTRIES, complete);
   bool parseError = !complete;
+  if (!ended && !complete) Serial.printf("Price answer stopped after %u bytes\n", (unsigned)body.length());
 
   int stored = 0;
   for (int i = 0; i < count; i++) {
@@ -476,19 +517,15 @@ void serviceFetch(const struct tm& t, time_t now) {
 // Stable channel: the version on the install page
 bool fetchLatestVersion(String& out) {
   WiFiClientSecure client;
-  client.setInsecure();
   HTTPClient http;
-  setHttpTimeouts(http);
-  if (!http.begin(client, String(UPDATE_BASE_URL) + "manifest.json")) return false;
-  http.setUserAgent(USER_AGENT);
-
-  int code = http.GET();
-  if (code != HTTP_CODE_OK) { http.end(); return false; }
+  if (startGet(http, client, String(UPDATE_BASE_URL) + "manifest.json", "application/json") != HTTP_CODE_OK) { http.end(); return false; }
+  String body;
+  bool ended = readBody(http, body);
+  http.end();
+  if (!ended) return false;
 
   JsonDocument filter;
   filter["version"] = true;
-  String body = http.getString();   // the whole response first, see fetchDay()
-  http.end();
   JsonDocument doc;
   DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
   if (err) return false;
@@ -500,21 +537,15 @@ bool fetchLatestVersion(String& out) {
 }
 
 // Test channel: the newest release on GitHub, release candidates included. The three newest releases are
-// read as a whole (see fetchDay()) and only their tag and draft flag are kept.
+// read as a whole (see readBody()) and only their tag and draft flag are kept.
 bool fetchNewestRelease(String& out) {
   WiFiClientSecure client;
-  client.setInsecure();
-  HTTPClient http;
-  setHttpTimeouts(http);
-  if (!http.begin(client, RELEASES_API)) return false;
-  http.setUserAgent(USER_AGENT);                           // GitHub's API requires a user agent
-  http.addHeader("Accept", "application/vnd.github+json");
-
-  int code = http.GET();
-  if (code != HTTP_CODE_OK) { http.end(); return false; }
-
-  String body = http.getString();
+  HTTPClient http;   // GitHub's API requires a user agent, which startGet() sets
+  if (startGet(http, client, RELEASES_API, "application/vnd.github+json") != HTTP_CODE_OK) { http.end(); return false; }
+  String body;
+  bool ended = readBody(http, body);
   http.end();
+  if (!ended) return false;
 
   JsonDocument filter;
   filter[0]["tag_name"] = true;
@@ -556,7 +587,65 @@ void showUpdatingOnStrip() {
   FastLED.show();
 }
 
-// Downloads and installs the firmware. Reboots into it on success; returns only if it failed.
+// Downloads the firmware at url and writes it to the free app slot. Returns true when it is written and
+// checked; the caller then restarts into it. Reads the download itself, like readBody(), instead of
+// HTTPUpdate, which looks at the first byte before it has arrived and then reports
+// "Verify Bin Header Failed" for a good file.
+const unsigned long FIRMWARE_DEADLINE_MS = 180000;   // the whole download, about 1.3 MB
+const unsigned long FIRMWARE_STALL_MS    = 20000;    // no data for this long: give up
+
+bool downloadFirmware(const String& url, String& error) {
+  WiFiClientSecure client;
+  HTTPClient http;
+  int code = startGet(http, client, url, nullptr);
+  if (code != HTTP_CODE_OK) {
+    error = code > 0 ? String("server answered HTTP ") + String(code) : String(HTTPClient::errorToString(code));
+    http.end();
+    return false;
+  }
+  long size = http.getSize();
+  const char* sizeProblem = firmwareSizeProblem(size, (long)ESP.getFreeSketchSpace());
+  if (sizeProblem) { error = sizeProblem; http.end(); return false; }
+  if (!Update.begin((size_t)size, U_FLASH)) { error = String("could not start writing: ") + Update.errorString(); http.end(); return false; }
+
+  auto& stream = http.getStream();
+  uint8_t buf[1024];
+  long written = 0;
+  unsigned long start = millis(), lastData = millis();
+  error = "";
+  while (written < size) {
+    if ((long)(millis() - start) > (long)FIRMWARE_DEADLINE_MS || (long)(millis() - lastData) > (long)FIRMWARE_STALL_MS) {
+      error = "the download stopped after " + String(written) + " of " + String(size) + " bytes";
+      break;
+    }
+    int avail = stream.available();
+    if (avail <= 0) {
+      if (!stream.connected()) { error = "the connection closed after " + String(written) + " of " + String(size) + " bytes"; break; }
+      delay(2);
+      continue;
+    }
+    long want = size - written;
+    if (want > (long)sizeof(buf)) want = sizeof(buf);
+    if (avail < want) want = avail;
+    int n = stream.read(buf, (size_t)want);
+    if (n <= 0) continue;
+    if (written == 0 && !firmwareHeaderOk(buf, (size_t)n)) { error = "the file is not ESP32 firmware"; break; }
+    if (Update.write(buf, (size_t)n) != (size_t)n) { error = String("writing failed: ") + Update.errorString(); break; }
+    written += n;
+    lastData = millis();
+  }
+  http.end();
+  if (written != size) {
+    Update.abort();
+    return false;
+  }
+  if (!Update.end(true)) { error = String("the firmware did not check out: ") + Update.errorString(); return false; }
+  return true;
+}
+
+// Downloads and installs the firmware, with a few tries. Reboots into it on success; returns only if it failed.
+const int FIRMWARE_TRIES = 3;
+
 void installUpdate() {
   String memBefore = memoryInfo();
   String url = firmwareUrl(latestVersion);
@@ -565,20 +654,21 @@ void installUpdate() {
   showUpdatingOnStrip();
   statusBusy = true;
 
-  WiFiClientSecure client;
-  client.setInsecure();
-  httpUpdate.rebootOnUpdate(true);
-  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);   // GitHub release files redirect to a download host
-  t_httpUpdate_return r = httpUpdate.update(client, url);
+  String error;
+  for (int attempt = 1; attempt <= FIRMWARE_TRIES; attempt++) {
+    if (downloadFirmware(url, error)) {
+      Serial.printf("Update to %s installed, restarting\n", latestVersion.c_str());
+      delay(300);
+      ESP.restart();
+    }
+    Serial.printf("Update attempt %d of %d failed: %s\n", attempt, FIRMWARE_TRIES, error.c_str());
+    if (attempt < FIRMWARE_TRIES) delay(3000);
+  }
 
   // Still here: nothing was installed. Carry on and try again at the next regular check.
   statusBusy = false;
   installingUpdate = false;
-  if (r == HTTP_UPDATE_FAILED) {
-    updateMessage = "Update to " + latestVersion + " failed: " + httpUpdate.getLastErrorString() + " (" + memBefore + ")";
-  } else {
-    updateMessage = "No update installed";
-  }
+  updateMessage = "Update to " + latestVersion + " failed: " + error + " (" + memBefore + ")";
   Serial.println(updateMessage);
   nextUpdateCheckMs = millis() + UPDATE_INTERVAL_MS;
   needRebuild = true;

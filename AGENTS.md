@@ -75,6 +75,7 @@ CI runs the same on every pull request. Local and CI builds report version `dev`
 - **`DATA_PIN` is a `constexpr`, not a macro;** FastLED uses that name internally.
 - **Default arguments** on sketch functions can break the generated prototypes; pass all arguments explicitly.
 - **Timer callbacks:** the blue LED is driven by a `Ticker`, which runs in another task. It only reads flags (`volatile`) and writes the LED; keep it that way, no network, strip or `String` work in it.
+- **Read the whole HTTP response before parsing it** (`http.getString()`, HTTP/1.1). With HTTP/1.0 the price server sends no length and closes the connection as soon as a cached response is sent; reading it a little at a time while parsing cut it off after a few prices (v5.0-v5.1).
 - **Release candidates** (`vX.Y-rcN`) are pre-releases: the install page and normal lamps ignore them; lamps with the test channel install them.
 
 ## Releases

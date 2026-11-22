@@ -4,6 +4,12 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+## v5.1.1
+
+- **Fixed: the lamp could stop getting prices** and pulse purple. When the price server answered from its cache, it closed the connection so fast that the lamp only read the first few prices of the day. The lamp now reads the whole answer before using it. The same fix applies to the check for updates.
+
+## v5.1
+
 - **Night mode can be turned off:** untick *Use night mode* in the web UI and the lamp uses the day brightness around the clock. Handy where nobody sleeps, like a laundry room. Night mode is on by default, so nothing changes for lamps that are already set up. Also in the emulator.
 
 ## v5.0

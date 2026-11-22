@@ -93,7 +93,7 @@ const int FETCH_ERR_PARTIAL = -103;   // only part of the day arrived
 // When a newer version is found, the lamp installs it right away and restarts into it.
 const char* UPDATE_BASE_URL  = "https://flysen.github.io/elpris-led/";
 const char* UPDATE_FIRMWARE  = "firmware/" BOARD_NAME "/elpris-led.bin";
-const char* RELEASES_API     = "https://api.github.com/repos/flysen/elpris-led/releases?per_page=5";
+const char* RELEASES_API     = "https://api.github.com/repos/flysen/elpris-led/releases?per_page=3";   // about 30 kB
 const char* RELEASE_DOWNLOAD = "https://github.com/flysen/elpris-led/releases/download/";
 const unsigned long UPDATE_FIRST_CHECK_MS = 2UL * 60UL * 1000UL;          // first check 2 min after boot
 const unsigned long UPDATE_INTERVAL_MS    = 6UL * 60UL * 60UL * 1000UL;   // then every 6 hours
@@ -337,30 +337,6 @@ String describeFetchError(int code) {
   return HTTPClient::errorToString(code);   // connection, TLS and timeout errors
 }
 
-// Reads from another stream, counts the bytes and keeps a copy of the first ones, so the web UI can show how
-// much of a response arrived and how it started.
-class RecordingStream : public Stream {
- public:
-  explicit RecordingStream(Stream& source) : src(source) {}
-  int available() { return src.available(); }
-  int read() {
-    int c = src.read();
-    if (c >= 0) {
-      total++;
-      if (len < sizeof(buf)) buf[len++] = (char)c;
-    }
-    return c;
-  }
-  int peek() { return src.peek(); }
-  size_t write(uint8_t) { return 0; }
-  void flush() {}
-  char buf[80];
-  size_t len = 0;
-  size_t total = 0;
- private:
-  Stream& src;
-};
-
 // Fetches one day of prices. With sumOnly, the prices are added to that sum (for past days in the
 // normal price) instead of being stored per quarter in the cache. Returns true if any prices arrived;
 // the caller checks that the whole day did.
@@ -370,7 +346,9 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   client.setInsecure();
   HTTPClient http;
   setHttpTimeouts(http);
-  http.useHTTP10(true);
+  // HTTP/1.1, so the server says where the response ends (its length, or chunks) and getString() reads all of
+  // it. With HTTP/1.0 the price server sends no length and closes the connection right after a cached
+  // response, which cut the reading off after a few prices (v5.0-v5.1).
   if (!http.begin(client, url)) { code = FETCH_ERR_BEGIN; return false; }
   http.setUserAgent(USER_AGENT);
   http.addHeader("Accept", "application/json");
@@ -380,24 +358,22 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   code = http.GET();
   if (code != HTTP_CODE_OK) { http.end(); return false; }
   int expected = http.getSize();   // -1 if the server didn't say
+  String type = http.header("Content-Type");
+  String body = http.getString();  // the whole response first, about 13 kB for a day of 15-minute prices
+  http.end();
 
-  // The response is a JSON array with one object per price. Reading the objects one at a time,
-  // instead of the whole array at once, keeps memory use small.
+  // The response is a JSON array with one object per price; only the fields used here are kept
   JsonDocument filter;
-  filter["SEK_per_kWh"] = true;
-  filter["time_start"]  = true;
-  filter["time_end"]    = true;
+  filter[0]["SEK_per_kWh"] = true;
+  filter[0]["time_start"]  = true;
+  filter[0]["time_end"]    = true;
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
+  bool parseError = err || !doc.is<JsonArray>();
 
-  RecordingStream stream(http.getStream());
-  stream.setTimeout(10000);
   int stored = 0;
-  bool parseError = !stream.find("[");
   if (!parseError) {
-    do {
-      JsonDocument item;
-      DeserializationError err = deserializeJson(item, stream, DeserializationOption::Filter(filter));
-      if (err) { parseError = true; break; }
-
+    for (JsonObject item : doc.as<JsonArray>()) {
       const char* ts = item["time_start"];
       const char* te = item["time_end"];
       if (!ts) continue;
@@ -411,22 +387,20 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
         if (sumOnly) sumOnly->add(p); else putSlot(s, p);
         stored++;
       }
-    } while (stream.findUntil(",", "]"));
+    }
   }
 
   // How much arrived, shown in the web UI if the day turns out to be incomplete
-  String received = String((unsigned long)stream.total) + (expected > 0 ? " of " + String(expected) : String("")) + " bytes";
+  String received = String((unsigned long)body.length()) + (expected > 0 ? " of " + String(expected) : String("")) + " bytes";
   if (stored == 0) {
     char snippet[61];
-    responseSnippet(stream.buf, stream.len, snippet, sizeof(snippet));
-    String type = http.header("Content-Type");
+    responseSnippet(body.c_str(), body.length(), snippet, sizeof(snippet));
     lastResponseInfo = "received " + received + ", content type " + (type.length() ? type : String("missing")) +
                        ", response starts with \"" + String(snippet) + "\"";
     code = parseError ? FETCH_ERR_PARSE : FETCH_ERR_EMPTY;
   } else {
     lastResponseInfo = "received " + received + ", " + String(stored) + " quarters";
   }
-  http.end();
   return stored > 0;
 }
 
@@ -514,7 +488,6 @@ bool fetchLatestVersion(String& out) {
   client.setInsecure();
   HTTPClient http;
   setHttpTimeouts(http);
-  http.useHTTP10(true);
   if (!http.begin(client, String(UPDATE_BASE_URL) + "manifest.json")) return false;
   http.setUserAgent(USER_AGENT);
 
@@ -523,9 +496,10 @@ bool fetchLatestVersion(String& out) {
 
   JsonDocument filter;
   filter["version"] = true;
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+  String body = http.getString();   // the whole response first, see fetchDay()
   http.end();
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
   if (err) return false;
 
   const char* v = doc["version"];
@@ -534,14 +508,13 @@ bool fetchLatestVersion(String& out) {
   return true;
 }
 
-// Test channel: the newest release on GitHub, release candidates included. The releases are read one at a
-// time from the response and only their tag and draft flag are kept.
+// Test channel: the newest release on GitHub, release candidates included. The three newest releases are
+// read as a whole (see fetchDay()) and only their tag and draft flag are kept.
 bool fetchNewestRelease(String& out) {
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   setHttpTimeouts(http);
-  http.useHTTP10(true);
   if (!http.begin(client, RELEASES_API)) return false;
   http.setUserAgent(USER_AGENT);                           // GitHub's API requires a user agent
   http.addHeader("Accept", "application/vnd.github+json");
@@ -549,29 +522,29 @@ bool fetchNewestRelease(String& out) {
   int code = http.GET();
   if (code != HTTP_CODE_OK) { http.end(); return false; }
 
-  JsonDocument filter;
-  filter["tag_name"] = true;
-  filter["draft"]    = true;
+  String body = http.getString();
+  http.end();
 
-  Stream& stream = http.getStream();
+  JsonDocument filter;
+  filter[0]["tag_name"] = true;
+  filter[0]["draft"]    = true;
+  JsonDocument doc;
+  if (deserializeJson(doc, body, DeserializationOption::Filter(filter))) return false;
+  body = String();   // free the memory before going on
+
   String best;
   int bestV[3] = {0, 0, 0}, bestRc = 0;
-  if (stream.find("[")) {
-    do {
-      JsonDocument item;
-      if (deserializeJson(item, stream, DeserializationOption::Filter(filter))) break;
-      if (item["draft"] | false) continue;
-      const char* tag = item["tag_name"];
-      int v[3], rc;
-      if (!tag || !parseRelease(tag, v, rc)) continue;
-      if (best.length() == 0 || compareReleases(v, rc, bestV, bestRc) > 0) {
-        best = tag;
-        memcpy(bestV, v, sizeof(bestV));
-        bestRc = rc;
-      }
-    } while (stream.findUntil(",", "]"));
+  for (JsonObject item : doc.as<JsonArray>()) {
+    if (item["draft"] | false) continue;
+    const char* tag = item["tag_name"];
+    int v[3], rc;
+    if (!tag || !parseRelease(tag, v, rc)) continue;
+    if (best.length() == 0 || compareReleases(v, rc, bestV, bestRc) > 0) {
+      best = tag;
+      memcpy(bestV, v, sizeof(bestV));
+      bestRc = rc;
+    }
   }
-  http.end();
 
   if (best.length() == 0) return false;
   out = best;

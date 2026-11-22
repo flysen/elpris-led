@@ -4,6 +4,8 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+- **Night mode can be turned off:** untick *Use night mode* in the web UI and the lamp uses the day brightness around the clock. Handy where nobody sleeps, like a laundry room. Night mode is on by default, so nothing changes for lamps that are already set up. Also in the emulator.
+
 ## v5.0
 
 - **ESP32 only.** ESP8266 boards are no longer supported. An ESP8266 lamp keeps running v4.0.5 but gets no more updates; every six hours it restarts briefly when it finds a newer release it can't install. Move the lamp to an ESP32 board to get new versions. The install page only installs on ESP32.

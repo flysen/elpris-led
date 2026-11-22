@@ -86,6 +86,7 @@ Try both modes, and all the settings, in the [emulator](https://flysen.github.io
 | Pulse the current 15 minutes towards white | Off: the current LED pulses in its own price color instead |
 | Brightness of passed time | 0–100 % of normal brightness, default 10 % |
 | Time zone | Where the lamp is, so the strip starts at local midnight; Swedish time by default |
+| Use night mode | On by default. Off: the day brightness is used around the clock, e.g. in a laundry room |
 | Night mode start / end | Hours when the night brightness is used |
 | Day / night brightness | Overall brightness of the strip, 0–255 |
 | Install new releases automatically | On by default |

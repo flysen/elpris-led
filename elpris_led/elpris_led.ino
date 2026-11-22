@@ -148,6 +148,7 @@ void clearHistory() { for (HistoryDay& h : history) h = HistoryDay(); }
 Preferences preferences;
 char cfgArea[5]  = "SE3";
 char cfgTz[64];
+bool cfgNightMode   = true;   // false = day brightness around the clock
 int  cfgNightStart  = 23;
 int  cfgNightEnd    = 6;
 int  cfgBrightDay   = 40;
@@ -245,6 +246,7 @@ void loadSettings() {
   a.toCharArray(cfgArea, sizeof(cfgArea));
   String z = preferences.getString("tz", DEFAULT_TZ);
   z.toCharArray(cfgTz, sizeof(cfgTz));
+  cfgNightMode   = preferences.getBool("nightmode", true);
   cfgNightStart  = preferences.getInt("nstart", 23);
   cfgNightEnd    = preferences.getInt("nend", 6);
   cfgBrightDay   = preferences.getInt("bday", 40);
@@ -274,6 +276,7 @@ void loadSettings() {
 void saveSettings() {
   preferences.putString("area", cfgArea);
   preferences.putString("tz", cfgTz);
+  preferences.putBool("nightmode", cfgNightMode);
   preferences.putInt("nstart", cfgNightStart);
   preferences.putInt("nend", cfgNightEnd);
   preferences.putInt("bday", cfgBrightDay);
@@ -928,6 +931,9 @@ void handleRoot() {
   html += timeZoneSelect();
   html += "<p><small>Where the lamp is, so the strip starts at local midnight. Daylight saving time is handled automatically.</small></p>";
 
+  html += checkbox("nightmode", cfgNightMode, "Use night mode",
+                   "Uses the night brightness between the hours below. Untick to use the day brightness around the clock, "
+                   "for example in a laundry room or another place where nobody sleeps.");
   html += "<label>Night mode start (hour 0-23):</label><input type='number' name='nstart' min='0' max='23' value='" + String(cfgNightStart) + "'>";
   html += "<label>Night mode end (hour 0-23):</label><input type='number' name='nend' min='0' max='23' value='" + String(cfgNightEnd) + "'>";
   html += "<label>Day brightness (1-255):</label><input type='number' name='bday' min='1' max='255' value='" + String(cfgBrightDay) + "'>";
@@ -978,6 +984,7 @@ void handleSave() {
   if (server.hasArg("strong"))    cfgStrongOre   = server.arg("strong").toInt();
   if (server.hasArg("levels"))    cfgFiveLevels  = server.arg("levels").toInt() != 3;
   cfgReverse      = server.hasArg("reverse");   // unchecked boxes are not sent
+  cfgNightMode    = server.hasArg("nightmode");
   cfgPulseWhite   = server.hasArg("pulsewh");
   cfgNormTomorrow = server.hasArg("normtmrw");
   cfgAutoUpdate   = server.hasArg("autoupd");
@@ -1187,7 +1194,7 @@ void loop() {
   serviceFetch(t, now);
   if (needRebuild) { rebuildTimeline(now); needRebuild = false; }
 
-  bool isNight = isNightHour(t.tm_hour, cfgNightStart, cfgNightEnd);
+  bool isNight = nightModeActive(cfgNightMode, t.tm_hour, cfgNightStart, cfgNightEnd);
   FastLED.setBrightness(isNight ? cfgBrightNight : cfgBrightDay);
 
   int32_t nowSlot = (int32_t)(now / SLOT_SEC);

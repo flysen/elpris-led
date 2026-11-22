@@ -4,7 +4,7 @@ An ESP32 and a WS2812B LED strip that show the day's Swedish spot electricity pr
 
 Elpriser tillhandahålls av [Elpriset just nu.se](https://www.elprisetjustnu.se).
 
-What's new in each version: see [CHANGELOG.md](CHANGELOG.md). Try it without a lamp, on today's real prices, in the [emulator](https://flysen.github.io/elpris-led/emulator/).
+What's new in each version: see [CHANGELOG.md](CHANGELOG.md). Try it without a lamp, on today's real prices, in the [emulator](https://flysen.github.io/elpris-led/emulator/). The lamp's web page, the install page and the emulator are in English and Swedish.
 
 ## Getting started
 

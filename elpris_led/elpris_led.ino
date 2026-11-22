@@ -338,8 +338,8 @@ String describeFetchError(int code) {
 }
 
 // Fetches one day of prices. With sumOnly, the prices are added to that sum (for past days in the
-// normal price) instead of being stored per quarter in the cache. Returns true if any prices arrived;
-// the caller checks that the whole day did.
+// normal price) instead of being stored per quarter in the cache. Returns true if a whole answer with
+// prices arrived; the caller also checks that it covers the whole day.
 bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   lastResponseInfo = "";
   WiFiClientSecure client;
@@ -362,31 +362,19 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
   String body = http.getString();  // the whole response first, about 13 kB for a day of 15-minute prices
   http.end();
 
-  // The response is a JSON array with one object per price; only the fields used here are kept
-  JsonDocument filter;
-  filter[0]["SEK_per_kWh"] = true;
-  filter[0]["time_start"]  = true;
-  filter[0]["time_end"]    = true;
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, body, DeserializationOption::Filter(filter));
-  bool parseError = err || !doc.is<JsonArray>();
+  // Read by parsePrices() in elpris_logic.h, which is tested with whole, cut-off and odd answers
+  static PriceEntry entries[MAX_PRICE_ENTRIES];
+  bool complete = false;
+  int count = parsePrices(body.c_str(), body.length(), entries, MAX_PRICE_ENTRIES, complete);
+  bool parseError = !complete;
 
   int stored = 0;
-  if (!parseError) {
-    for (JsonObject item : doc.as<JsonArray>()) {
-      const char* ts = item["time_start"];
-      const char* te = item["time_end"];
-      if (!ts) continue;
-      time_t a, b;
-      if (!parseIso(ts, a)) continue;
-      if (!te || !parseIso(te, b)) b = a;   // priceSlots then assumes one hour
-      float p = item["SEK_per_kWh"] | 0.0f;
-      int32_t s0, s1;
-      priceSlots(a, b, s0, s1);
-      for (int32_t s = s0; s < s1; s++) {
-        if (sumOnly) sumOnly->add(p); else putSlot(s, p);
-        stored++;
-      }
+  for (int i = 0; i < count; i++) {
+    int32_t s0, s1;
+    priceSlots(entries[i].start, entries[i].end, s0, s1);   // an answer without an end time counts as an hour
+    for (int32_t s = s0; s < s1; s++) {
+      if (sumOnly) sumOnly->add(entries[i].price); else putSlot(s, entries[i].price);
+      stored++;
     }
   }
 
@@ -399,8 +387,11 @@ bool fetchDay(const String& url, int& code, PriceSum* sumOnly) {
                        ", response starts with \"" + String(snippet) + "\"";
     code = parseError ? FETCH_ERR_PARSE : FETCH_ERR_EMPTY;
   } else {
-    lastResponseInfo = "received " + received + ", " + String(stored) + " quarters";
+    lastResponseInfo = "received " + received + ", " + String(stored) + " quarters" + (complete ? "" : ", cut off");
   }
+  // A cut-off answer is never a whole day, even if its first prices cover most of it: keep what arrived,
+  // but report it, so the day is fetched again
+  if (stored > 0 && !complete) { code = FETCH_ERR_PARTIAL; return false; }
   return stored > 0;
 }
 

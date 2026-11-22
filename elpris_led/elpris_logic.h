@@ -2,6 +2,7 @@
 #pragma once
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -421,5 +422,94 @@ inline int addressBlinkSteps(const uint8_t ip[4], int parts, int unitMs, BlinkSt
     if (p < 3) add(false, unitMs * 10);                                           // long pause between the parts
   }
   add(false, unitMs * 20);                                                         // before it is shown again
+  return n;
+}
+
+// =====================================================================
+//  Reading a day of prices from elprisetjustnu.se
+//
+//  The answer is a JSON array with one flat object per price period, e.g.
+//  [{"SEK_per_kWh":0.6327,"EUR_per_kWh":0.0574,"EXR":11.02,"time_start":"2026-11-22T00:00:00+01:00",
+//    "time_end":"2026-11-22T00:15:00+01:00"}, ...]
+//  Only SEK_per_kWh, time_start and time_end are used. Tested with whole, cut-off and odd answers in
+//  tests/, because a cut-off answer is what made lamps lose their prices in v5.0-v5.1.
+// =====================================================================
+
+struct PriceEntry { time_t start; time_t end; float price; };   // end == start when the answer had no end
+const int MAX_PRICE_ENTRIES = 120;   // a 25-hour day of 15-minute prices is 100
+
+// Finds "key": inside [p, end) and returns a pointer to the first character after the colon, or nullptr
+inline const char* jsonValueOf(const char* p, const char* end, const char* key) {
+  size_t klen = strlen(key);
+  for (; p + klen + 2 <= end; p++) {
+    if (*p != '"' || strncmp(p + 1, key, klen) != 0 || p[klen + 1] != '"') continue;
+    const char* q = p + klen + 2;
+    while (q < end && (*q == ' ' || *q == '\t' || *q == '\r' || *q == '\n')) q++;
+    if (q < end && *q == ':') {
+      q++;
+      while (q < end && (*q == ' ' || *q == '\t' || *q == '\r' || *q == '\n')) q++;
+      return q;
+    }
+  }
+  return nullptr;
+}
+
+// Copies a JSON string value starting at p (at its opening quote) into out. Returns false if it isn't one.
+inline bool jsonStringAt(const char* p, const char* end, char* out, size_t outSize) {
+  if (!p || p >= end || *p != '"' || outSize == 0) return false;
+  p++;
+  size_t n = 0;
+  while (p < end && *p != '"') {
+    if (n + 1 < outSize) out[n++] = *p;
+    p++;
+  }
+  out[n] = '\0';
+  return p < end;   // the closing quote was found
+}
+
+// Reads the price periods in a body of length len into out (at most maxOut). Returns how many were read.
+// complete is set when the array ended properly with "]"; a cut-off or broken answer leaves it false, so the
+// caller can tell "the server sent nothing" from "only part of it arrived". Periods without a price or a
+// start time are skipped.
+inline int parsePrices(const char* body, size_t len, PriceEntry* out, int maxOut, bool& complete) {
+  complete = false;
+  if (!body) return 0;
+  const char* p = body;
+  const char* end = body + len;
+  auto skipSpace = [&]() { while (p < end && (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')) p++; };
+  skipSpace();
+  if (p >= end || *p != '[') return 0;   // not a JSON array, e.g. an error page
+  p++;
+  int n = 0;
+  skipSpace();
+  if (p < end && *p == ']') { complete = true; return 0; }
+  while (p < end) {
+    skipSpace();
+    if (p >= end || *p != '{') return n;
+    const char* objEnd = p + 1;
+    bool inString = false;
+    while (objEnd < end && (inString || *objEnd != '}')) {
+      if (*objEnd == '"') inString = !inString;
+      else if (!inString && (*objEnd == '{' || *objEnd == '[')) return n;   // the price objects are flat
+      objEnd++;
+    }
+    if (objEnd >= end) return n;   // cut off inside an object
+
+    char ts[40], te[40];
+    const char* pv = jsonValueOf(p, objEnd, "SEK_per_kWh");
+    char* numEnd = nullptr;
+    double price = pv ? strtod(pv, &numEnd) : 0;
+    bool hasPrice = pv && numEnd != pv && numEnd <= objEnd;
+    time_t a = 0, b = 0;
+    bool hasStart = jsonStringAt(jsonValueOf(p, objEnd, "time_start"), objEnd, ts, sizeof(ts)) && parseIso(ts, a);
+    if (!(jsonStringAt(jsonValueOf(p, objEnd, "time_end"), objEnd, te, sizeof(te)) && parseIso(te, b))) b = a;
+    if (hasPrice && hasStart && n < maxOut) out[n++] = PriceEntry{a, b, (float)price};
+
+    p = objEnd + 1;
+    skipSpace();
+    if (p < end && *p == ',') { p++; continue; }
+    if (p < end && *p == ']') { complete = true; return n; }
+    return n;   // cut off, or something else than , or ]
+  }
   return n;
 }

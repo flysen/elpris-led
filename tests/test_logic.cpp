@@ -653,6 +653,217 @@ static void testAddressBlinkSteps() {
   check("addressBlinkSteps: 9 parts is shown as 4", n, four);
 }
 
+// ---------- Reading a day of prices ----------
+
+// A file from tests/fixtures as a string (the tests run from the repository root)
+static char* readFixture(const char* name, size_t& len) {
+  char path[256];
+  snprintf(path, sizeof(path), "tests/fixtures/%s", name);
+  FILE* f = fopen(path, "rb");
+  if (!f) { len = 0; return nullptr; }
+  fseek(f, 0, SEEK_END);
+  long size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  char* buf = (char*)malloc((size_t)size + 1);
+  len = fread(buf, 1, (size_t)size, f);
+  buf[len] = '\0';
+  fclose(f);
+  return buf;
+}
+
+// A day in the elprisetjustnu.se format, counted in UTC from the day's local midnight: periods of the given
+// minutes, with the UTC offset (in minutes) changing at changeUtc, and prices 0.10, 0.11, ... in SEK
+static void buildDay(char* out, size_t size, time_t midnightUtc, int periods, int minutes,
+                     time_t changeUtc, int offBefore, int offAfter) {
+  size_t o = 0;
+  o += snprintf(out + o, size - o, "[");
+  // Local time with its offset, e.g. "2026-10-25T02:45:00+02:00", for UTC time t and offset off (minutes)
+  auto local = [](time_t t, int off, char* buf, size_t n) {
+    time_t lt = t + off * 60;
+    struct tm g;
+    gmtime_r(&lt, &g);
+    snprintf(buf, n, "%04d-%02d-%02dT%02d:%02d:00%c%02d:%02d", g.tm_year + 1900, g.tm_mon + 1, g.tm_mday,
+             g.tm_hour, g.tm_min, off < 0 ? '-' : '+', abs(off) / 60 % 100, abs(off) % 60);
+  };
+  for (int i = 0; i < periods; i++) {
+    time_t a = midnightUtc + (time_t)i * minutes * 60, b = a + minutes * 60;
+    char sa[80], sb[80];
+    local(a, a < changeUtc ? offBefore : offAfter, sa, sizeof(sa));
+    local(b, (b - 1) < changeUtc ? offBefore : offAfter, sb, sizeof(sb));   // the end in the offset just before it
+    o += snprintf(out + o, size - o,
+                  "%s{\"SEK_per_kWh\":%.2f,\"EUR_per_kWh\":0.01,\"EXR\":11.0,\"time_start\":\"%s\",\"time_end\":\"%s\"}",
+                  i ? "," : "", 0.10 + i * 0.01, sa, sb);
+  }
+  snprintf(out + o, size - o, "]");
+}
+
+static void testParsePricesRealDay() {
+  size_t len;
+  char* body = readFixture("prices-2026-11-22-SE3.json", len);
+  checkTrue("parsePrices: the fixture with a real day can be read", body != nullptr && len > 13000);
+  if (!body) return;
+  PriceEntry e[MAX_PRICE_ENTRIES];
+  bool complete;
+  int n = parsePrices(body, len, e, MAX_PRICE_ENTRIES, complete);
+  check("parsePrices: a real day has 96 prices", n, 96);
+  checkTrue("parsePrices: a real day is complete", complete);
+  check("parsePrices: first price starts at local midnight", e[0].start, utc(2026, 11, 21, 23, 0));
+  check("parsePrices: first price lasts 15 minutes", e[0].end - e[0].start, 900);
+  checkNear("parsePrices: first price is 0.95908 SEK", e[0].price, 0.95908);
+  checkNear("parsePrices: last price is 0.98377 SEK", e[95].price, 0.98377);
+  check("parsePrices: last price ends at the next local midnight", e[95].end, utc(2026, 11, 22, 23, 0));
+  bool contiguous = true;
+  for (int i = 1; i < n; i++) if (e[i].start != e[i - 1].end) contiguous = false;
+  checkTrue("parsePrices: the periods follow each other without gaps", contiguous);
+
+  // Each period fills exactly one quarter, and together they fill the day
+  int32_t s0, s1, first = 0, last = 0, total = 0;
+  for (int i = 0; i < n; i++) {
+    priceSlots(e[i].start, e[i].end, s0, s1);
+    if (i == 0) first = s0;
+    last = s1;
+    total += s1 - s0;
+  }
+  check("parsePrices: the day starts at the local midnight slot", first, localMidnightSlot(utc(2026, 11, 22, 12, 0), 0));
+  check("parsePrices: the day ends at the next midnight slot", last, localMidnightSlot(utc(2026, 11, 22, 12, 0), 1));
+  check("parsePrices: 96 quarters in all", total, 96);
+
+  // What the lamp read in v5.0-v5.1: only the first 571 bytes
+  n = parsePrices(body, 571, e, MAX_PRICE_ENTRIES, complete);
+  check("parsePrices: cut off after 571 bytes gives the 4 whole prices before the cut", n, 4);
+  checkTrue("parsePrices: cut off after 571 bytes is not complete", !complete);
+  // Cut off at every length: never more prices than fit, never complete before the end, never a crash
+  bool ok = true;
+  int prev = 0;
+  for (size_t cut = 0; cut < len; cut += 37) {
+    int m = parsePrices(body, cut, e, MAX_PRICE_ENTRIES, complete);
+    if (complete || m < prev || m > 96) ok = false;
+    prev = m;
+  }
+  checkTrue("parsePrices: cut off anywhere, a day is never complete and the count only grows", ok);
+  n = parsePrices(body, len - 1, e, MAX_PRICE_ENTRIES, complete);
+  checkTrue("parsePrices: missing only the final ] is not complete", n == 96 && !complete);
+
+  // More prices than room: the first ones are kept
+  n = parsePrices(body, len, e, 10, complete);
+  checkTrue("parsePrices: stops at the room given", n == 10 && complete);
+  free(body);
+}
+
+static void testParsePricesDst() {
+  static char body[40000];
+  PriceEntry e[MAX_PRICE_ENTRIES];
+  bool complete;
+  int32_t s0, s1;
+
+  // 2026-03-29: clocks go forward at 02:00, 23 hours, 92 quarters
+  buildDay(body, sizeof(body), utc(2026, 3, 28, 23, 0), 92, 15, utc(2026, 3, 29, 1, 0), 60, 120);
+  int n = parsePrices(body, strlen(body), e, MAX_PRICE_ENTRIES, complete);
+  check("parsePrices: 2026-03-29 has 92 prices", n, 92);
+  int total = 0;
+  for (int i = 0; i < n; i++) { priceSlots(e[i].start, e[i].end, s0, s1); total += s1 - s0; }
+  check("parsePrices: 2026-03-29 fills 92 quarters", total, 92);
+  check("parsePrices: 2026-03-29 first price at local midnight", e[0].start, utc(2026, 3, 28, 23, 0));
+  check("parsePrices: 2026-03-29 03:00 local is 01:00 UTC", e[8].start, utc(2026, 3, 29, 1, 0));
+
+  // 2026-10-25: clocks go back at 03:00, 25 hours, 100 quarters
+  buildDay(body, sizeof(body), utc(2026, 10, 24, 22, 0), 100, 15, utc(2026, 10, 25, 1, 0), 120, 60);
+  n = parsePrices(body, strlen(body), e, MAX_PRICE_ENTRIES, complete);
+  check("parsePrices: 2026-10-25 has 100 prices", n, 100);
+  total = 0;
+  bool contiguous = true;
+  for (int i = 0; i < n; i++) {
+    priceSlots(e[i].start, e[i].end, s0, s1);
+    total += s1 - s0;
+    if (i && e[i].start != e[i - 1].end) contiguous = false;
+  }
+  check("parsePrices: 2026-10-25 fills 100 quarters", total, 100);
+  checkTrue("parsePrices: 2026-10-25 has no gaps or overlaps across the repeated hour", contiguous);
+  checkTrue("parsePrices: 2026-10-25 is complete", complete);
+
+  // Hourly prices, as the API gave before 15-minute prices: 24 periods of 4 quarters
+  buildDay(body, sizeof(body), utc(2026, 1, 14, 23, 0), 24, 60, utc(2030, 1, 1, 0, 0), 60, 60);
+  n = parsePrices(body, strlen(body), e, MAX_PRICE_ENTRIES, complete);
+  check("parsePrices: an hourly day has 24 prices", n, 24);
+  priceSlots(e[0].start, e[0].end, s0, s1);
+  check("parsePrices: an hourly price fills 4 quarters", s1 - s0, 4);
+}
+
+static void testParsePricesOdd() {
+  PriceEntry e[8];
+  bool complete;
+  const char* html = "<!DOCTYPE html><html><body>Bad gateway</body></html>";
+  check("parsePrices: an HTML error page gives no prices", parsePrices(html, strlen(html), e, 8, complete), 0);
+  checkTrue("parsePrices: an HTML error page is not complete", !complete);
+  check("parsePrices: an empty answer gives no prices", parsePrices("", 0, e, 8, complete), 0);
+  check("parsePrices: null gives no prices", parsePrices(nullptr, 5, e, 8, complete), 0);
+  check("parsePrices: [] is an empty, complete day", parsePrices("[]", 2, e, 8, complete) + (complete ? 100 : 0), 100);
+  check("parsePrices: [ ] with spaces is too", parsePrices(" [ \n ] ", 7, e, 8, complete) + (complete ? 100 : 0), 100);
+
+  const char* pretty = "[\n  {\n    \"time_start\" : \"2026-11-22T00:00:00+01:00\",\n    \"SEK_per_kWh\" : -0.0123,\n"
+                       "    \"time_end\" : \"2026-11-22T00:15:00+01:00\"\n  } ,\n  {\"SEK_per_kWh\":1.5e-1,"
+                       "\"time_start\":\"2026-11-22T00:15:00+01:00\",\"time_end\":\"2026-11-22T00:30:00+01:00\"}\n]\n";
+  int n = parsePrices(pretty, strlen(pretty), e, 8, complete);
+  checkTrue("parsePrices: spaces, line breaks and another key order are fine", n == 2 && complete);
+  checkNear("parsePrices: a negative price", e[0].price, -0.0123);
+  checkNear("parsePrices: a price written with an exponent", e[1].price, 0.15);
+
+  const char* noEnd = "[{\"SEK_per_kWh\":0.5,\"time_start\":\"2026-11-22T00:00:00+01:00\"}]";
+  n = parsePrices(noEnd, strlen(noEnd), e, 8, complete);
+  checkTrue("parsePrices: a missing time_end gives end = start (priceSlots then assumes an hour)", n == 1 && e[0].end == e[0].start);
+
+  const char* gaps = "[{\"time_start\":\"2026-11-22T00:00:00+01:00\"},"
+                     "{\"SEK_per_kWh\":0.5},"
+                     "{\"SEK_per_kWh\":\"x\",\"time_start\":\"2026-11-22T00:30:00+01:00\"},"
+                     "{\"SEK_per_kWh\":0.7,\"time_start\":\"not a date\"},"
+                     "{\"SEK_per_kWh\":0.8,\"time_start\":\"2026-11-22T00:45:00+01:00\",\"time_end\":\"2026-11-22T01:00:00+01:00\"}]";
+  n = parsePrices(gaps, strlen(gaps), e, 8, complete);
+  checkTrue("parsePrices: periods without a price or a start time are skipped", n == 1 && complete);
+  checkNear("parsePrices: the good period is kept", e[0].price, 0.8);
+
+  const char* nested = "[{\"SEK_per_kWh\":0.5,\"extra\":{\"a\":1},\"time_start\":\"2026-11-22T00:00:00+01:00\"}]";
+  checkTrue("parsePrices: a nested object is treated as broken", parsePrices(nested, strlen(nested), e, 8, complete) == 0 && !complete);
+  const char* braceInString = "[{\"note\":\"a } b\",\"SEK_per_kWh\":0.5,\"time_start\":\"2026-11-22T00:00:00+01:00\"}]";
+  checkTrue("parsePrices: a } inside a string doesn't end the object", parsePrices(braceInString, strlen(braceInString), e, 8, complete) == 1 && complete);
+  const char* junk = "[{\"SEK_per_kWh\":0.5,\"time_start\":\"2026-11-22T00:00:00+01:00\"} x]";
+  checkTrue("parsePrices: junk after a period stops reading, not complete", parsePrices(junk, strlen(junk), e, 8, complete) == 1 && !complete);
+  const char* notObject = "[1,2]";
+  checkTrue("parsePrices: an array of numbers gives nothing", parsePrices(notObject, strlen(notObject), e, 8, complete) == 0 && !complete);
+  const char* longTime = "[{\"SEK_per_kWh\":0.5,\"time_start\":\"2026-11-22T00:00:00+01:00 and much more text that does not fit\"}]";
+  checkTrue("parsePrices: an over-long time string is cut, not overrun", parsePrices(longTime, strlen(longTime), e, 8, complete) <= 1);
+  const char* openString = "[{\"SEK_per_kWh\":0.5,\"time_start\":\"2026-11-22T00:00";
+  checkTrue("parsePrices: cut off inside a string", parsePrices(openString, strlen(openString), e, 8, complete) == 0 && !complete);
+  const char* keyNoColon = "[{\"SEK_per_kWh\" 0.5,\"time_start\":\"2026-11-22T00:00:00+01:00\"}]";
+  checkTrue("parsePrices: a key without a colon is not a value", parsePrices(keyNoColon, strlen(keyNoColon), e, 8, complete) == 0 && complete);
+  const char* tabs = "\t[\r\n{\"SEK_per_kWh\"\t:\r\n0.5,\"time_start\" \t: \"2026-11-22T00:00:00+01:00\"}\r\n]";
+  checkTrue("parsePrices: tabs and carriage returns are spaces too", parsePrices(tabs, strlen(tabs), e, 8, complete) == 1 && complete);
+  const char* arrayValue = "[{\"SEK_per_kWh\":0.5,\"list\":[1],\"time_start\":\"2026-11-22T00:00:00+01:00\"}]";
+  checkTrue("parsePrices: an array inside a period is treated as broken", parsePrices(arrayValue, strlen(arrayValue), e, 8, complete) == 0 && !complete);
+  checkTrue("parsePrices: only [ is cut off", parsePrices("[", 1, e, 8, complete) == 0 && !complete);
+  checkTrue("parsePrices: [ followed by a space only is cut off", parsePrices("[ ", 2, e, 8, complete) == 0 && !complete);
+}
+
+static void testJsonHelpers() {
+  const char* obj = "{\"SEK_per_kWhX\":1,\"SEK_per_kWh\" \t:\r\n 2.5}";
+  const char* end = obj + strlen(obj);
+  const char* v = jsonValueOf(obj, end, "SEK_per_kWh");
+  checkTrue("jsonValueOf: a longer key with the same start is not a match", v && *v == '2');
+  checkTrue("jsonValueOf: a missing key gives null", jsonValueOf(obj, end, "time_start") == nullptr);
+  const char* atEnd = "{\"SEK_per_kWh\"";
+  checkTrue("jsonValueOf: a key at the very end gives null", jsonValueOf(atEnd, atEnd + strlen(atEnd), "SEK_per_kWh") == nullptr);
+  const char* spaceThenEnd = "{\"SEK_per_kWh\"  ";
+  checkTrue("jsonValueOf: a key followed only by spaces gives null", jsonValueOf(spaceThenEnd, spaceThenEnd + strlen(spaceThenEnd), "SEK_per_kWh") == nullptr);
+
+  char buf[8];
+  const char* str = "\"abcdefghij\"";
+  checkTrue("jsonStringAt: a string longer than the room is cut", jsonStringAt(str, str + strlen(str), buf, sizeof(buf)) && strcmp(buf, "abcdefg") == 0);
+  checkTrue("jsonStringAt: null is not a string", !jsonStringAt(nullptr, str, buf, sizeof(buf)));
+  checkTrue("jsonStringAt: at the end is not a string", !jsonStringAt(str + strlen(str), str + strlen(str), buf, sizeof(buf)));
+  checkTrue("jsonStringAt: a number is not a string", !jsonStringAt("12", str, buf, sizeof(buf)));
+  checkTrue("jsonStringAt: no room is not a string", !jsonStringAt(str, str + strlen(str), buf, 0));
+  checkTrue("jsonStringAt: no closing quote is not a string", !jsonStringAt(str, str + 5, buf, sizeof(buf)));
+}
+
 int main() {
   useTimeZone(SWEDEN_TZ);   // same as the lamp's default
 
@@ -676,6 +887,10 @@ int main() {
   testNightModeActive();
   testBackoff();
   testValidArea();
+  testParsePricesRealDay();
+  testParsePricesDst();
+  testParsePricesOdd();
+  testJsonHelpers();
   testResponseSnippet();
   testParseVersion();
   testVersions();

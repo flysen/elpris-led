@@ -6,7 +6,7 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## v5.1.1
 
-- **Fixed: the lamp could stop getting prices** and pulse purple. When the price server answered from its cache, it closed the connection so fast that the lamp only read the first few prices of the day. The lamp now reads the whole answer before using it. The same fix applies to the check for updates.
+- **Fixed: the lamp could stop getting prices** and pulse purple. When the price server answered from its cache, it closed the connection so fast that the lamp only read the first few prices of the day. The lamp now reads the whole answer before using it, and an answer that was cut off is never taken for a whole day. The same fix applies to the check for updates.
 
 ## v5.1
 

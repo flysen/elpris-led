@@ -43,6 +43,7 @@ No pull request without test cases. In the pull request's *Test cases* section, 
 - **Automated** wherever there is logic: name the tests added or changed in `tests/test_logic.cpp`, and always "CI passes: tests, lint, firmware".
 - **Coverage:** the tests must run at least **95 % of the lines** and **90 % of the branches** in `elpris_logic.h`. CI measures it on every pull request (`make coverage`, numbers on the run's summary page) and fails below the limits. Add tests with new logic so the numbers don't drop; don't lower the limits to make a pull request pass.
 - **By hand** for what can't be tested automatically, written so someone else can repeat it: what to do and what should happen. For example "Emulator: choose 3 levels → the legend shows green, yellow, red", or "Lamp: Check for updates now → restarts and shows the new version".
+- **Fetching prices and installing updates** are what keep lamps working in people's homes. Changes there get unit tests for their logic (like `parsePrices()` with the answers in `tests/fixtures/`) and go out as a **release candidate** on a lamp with the test channel for at least a day before the stable release. No admin bypass for these.
 - Changes to documentation only still get a test case, such as "Links in the README open the right pages".
 
 ## How to work

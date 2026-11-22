@@ -184,6 +184,12 @@ inline bool isNightHour(int hour, int start, int end) {
   return hour >= start && hour < end;
 }
 
+// Whether the night brightness is used: only when night mode is turned on and the hour is within it.
+// With night mode off the day brightness is used around the clock.
+inline bool nightModeActive(bool enabled, int hour, int start, int end) {
+  return enabled && isNightHour(hour, start, end);
+}
+
 // Wait before the next attempt: 30 s, doubled per failure, at most 30 min.
 inline unsigned long backoffMs(int failStreak) {
   int shift = failStreak - 1;

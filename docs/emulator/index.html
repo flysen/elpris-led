@@ -235,6 +235,7 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
       </div>
       <label class="check"><input id="applyBright" type="checkbox"><span>Show day and night brightness</span></label>
       <div id="brightBox" class="hidden">
+        <label class="check"><input id="nightMode" type="checkbox" checked><span>Use night mode</span></label>
         <div class="two">
           <div class="ctl"><div class="lab"><label for="nstart">Night mode start</label></div><input id="nstart" type="number" min="0" max="23" value="23"></div>
           <div class="ctl"><div class="lab"><label for="nend">Night mode end</label></div><input id="nend" type="number" min="0" max="23" value="6"></div>
@@ -549,7 +550,7 @@ function readS() {
   S = {
     minute: +$("time").value, speed: +$("speed").value, live: $("live").checked, tomorrow: $("tomorrow").value,
     N: +$("leds").value, reverse: $("reverse").checked, pulseWhite: $("pulseWhite").checked, pastPct: +$("pastPct").value,
-    applyBright: $("applyBright").checked, bday: +$("bday").value, bnight: +$("bnight").value,
+    applyBright: $("applyBright").checked, nightMode: $("nightMode").checked, bday: +$("bday").value, bnight: +$("bnight").value,
     nstart: Math.min(23, Math.max(0, +$("nstart").value | 0)), nend: Math.min(23, Math.max(0, +$("nend").value | 0)),
     perceptual: $("perceptual").checked, showVar: $("showVar").checked,
     mode: $("colorMode").value, compare: $("compare").checked
@@ -1055,7 +1056,7 @@ function frame(t) {
   }
   $("timeOut").textContent = fmtMin(Math.floor(S.minute));
   const st = state();
-  const night = isNightHour(Math.floor(st.minute / 60), S.nstart, S.nend);
+  const night = S.nightMode && isNightHour(Math.floor(st.minute / 60), S.nstart, S.nend);   // nightModeActive() in the lamp
   if (S.mode === "normal" || S.compare) drawStrip($("stripProp"), st.prop, t, night, shadeProp);
   if (S.mode === "range" || S.compare) drawStrip($("stripOrig"), st.orig, t, night, shadePlain);
   if (S.showVar) drawStrip($("stripVar"), st.vari, t, night, shadePlain);

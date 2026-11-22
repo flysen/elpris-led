@@ -411,6 +411,17 @@ static void testIsNightHour() {
   checkTrue("isNightHour 6-6: never night", !isNightHour(6, 6, 6));
 }
 
+static void testNightModeActive() {
+  checkTrue("nightModeActive: on, 23-6, at 2 is night", nightModeActive(true, 2, 23, 6));
+  checkTrue("nightModeActive: on, 23-6, at 12 is day", !nightModeActive(true, 12, 23, 6));
+  checkTrue("nightModeActive: off, 23-6, at 2 is day", !nightModeActive(false, 2, 23, 6));
+  checkTrue("nightModeActive: off, 23-6, at 23 is day", !nightModeActive(false, 23, 23, 6));
+  checkTrue("nightModeActive: on, 6-6 is never night", !nightModeActive(true, 6, 6, 6));
+  bool ok = true;
+  for (int h = 0; h < 24; h++) if (nightModeActive(false, h, 0, 23) || nightModeActive(false, h, 23, 6)) ok = false;
+  checkTrue("nightModeActive: off is day at every hour", ok);
+}
+
 static void testBackoff() {
   check("backoffMs: first failure 30 s", backoffMs(1), 30000);
   check("backoffMs: second failure 60 s", backoffMs(2), 60000);
@@ -662,6 +673,7 @@ int main() {
   testLevelHue();
   testTomorrowLeds();
   testIsNightHour();
+  testNightModeActive();
   testBackoff();
   testValidArea();
   testResponseSnippet();

@@ -278,7 +278,7 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
         <canvas id="board" data-sv-aria="ESP32-kort med sin blå lysdiod" class="board" aria-label="ESP32 board with its blue LED"></canvas>
         <p class="help" id="boardCaption" style="margin-bottom:12px"></p>
         <div class="ctl">
-          <div class="lab"><label for="boardState" data-sv="Lampan">The lamp is</label></div>
+          <div class="lab"><label for="boardState" data-sv="Lampans läge">The lamp is</label></div>
           <select id="boardState">
             <option value="startup" selected data-sv="Startar: wifi, adress, hämtning, OK">Starting up: wifi, address, fetching, OK</option>
             <option value="portal" data-sv="Väntar i sitt eget wifi, Elpris-LED-Config">Waiting in its own wifi, Elpris-LED-Config</option>
@@ -353,7 +353,7 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
         <div class="ctl">
           <div class="lab"><label for="agg" data-sv="En lysdiod som täcker flera kvartar visar">An LED covering several quarters shows</label></div>
           <select id="agg">
-            <option value="mean" data-sv="Deras snitt (lampan)">Their average (the lamp)</option>
+            <option value="mean" data-sv="Snittpriset (lampan)">Their average (the lamp)</option>
             <option value="max" data-sv="Den dyraste">The most expensive one</option>
             <option value="min" data-sv="Den billigaste">The cheapest one</option>
           </select>
@@ -361,13 +361,13 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
         <div class="ctl">
           <div class="lab"><label for="gamma" data-sv="Kurva">Curve</label><output id="gammaOut"></output></div>
           <input id="gamma" type="range" min="0.3" max="3" step="0.1" value="1">
-          <p class="help" data-sv="1 är jämn. Över 1 blir mer av dygnet grönt och bara topparna röda.">1 is even. Above 1, more of the day is green and only the peaks are red.</p>
+          <p class="help" data-sv="1 ger en jämn skala. Över 1 blir mer av dygnet grönt och bara topparna röda.">1 is even. Above 1, more of the day is green and only the peaks are red.</p>
         </div>
         <div class="two">
           <div class="ctl">
             <div class="lab"><label for="steps" data-sv="Färgsteg">Color steps</label></div>
             <select id="steps">
-              <option value="0" data-sv="Jämn (lampan)">Smooth (the lamp)</option>
+              <option value="0" data-sv="Steglös (lampan)">Smooth (the lamp)</option>
               <option value="3">3</option>
               <option value="4">4</option>
               <option value="5">5</option>
@@ -616,7 +616,7 @@ function readS() {
   $("bdayOut").textContent = S.bday;
   $("bnightOut").textContent = S.bnight;
   $("minspanOut").textContent = $("minspan").value + " öre";
-  $("gammaOut").textContent = S.V.gamma.toFixed(1);
+  $("gammaOut").textContent = dec(S.V.gamma, 1);
   $("brightBox").classList.toggle("hidden", !S.applyBright);
   $("minspanBox").classList.toggle("hidden", S.V.scale !== "minspan");
   $("absBox").classList.toggle("hidden", S.V.scale !== "absolute");
@@ -638,7 +638,7 @@ function describe(V) {
   if (V.basis === "remaining") p.push(T("only the time that is left", "bara tiden som är kvar"));
   if (V.win === "rolling") p.push(T("from now on", "från nu"));
   if (V.agg !== "mean") p.push(V.agg === "max" ? T("most expensive quarter per LED", "dyraste kvarten per lysdiod") : T("cheapest quarter per LED", "billigaste kvarten per lysdiod"));
-  if (V.gamma !== 1) p.push(T("curve ", "kurva ") + V.gamma.toFixed(1));
+  if (V.gamma !== 1) p.push(T("curve ", "kurva ") + dec(V.gamma, 1));
   if (V.steps) p.push(V.steps + T(" steps", " steg"));
   if (V.palette !== "orig") p.push(V.palette === "gyr" ? T("pure green, yellow, red", "rent grönt, gult, rött") : T("blue to red", "blått till rött"));
   return p.join(", ");
@@ -777,6 +777,7 @@ const shadePlain = (led, t, night, curRel) => shade(led.rgb, ledState(led.s0, le
 const ore = p => Math.round(p * 100) + " öre";
 const signedOre = d => (d >= 0 ? "+" : "−") + Math.abs(Math.round(d * 100)) + " öre";
 const pad = n => String(n).padStart(2, "0");
+const dec = (x, d) => { const s = x.toFixed(d); return I18N.lang === "sv" ? s.replace(".", ",") : s; };   // 0.99 / 0,99
 function fmtMin(m, isEnd) {
   const d = Math.floor(m / 1440), r = m % 1440;
   const tmr = T(" tomorrow", " imorgon");
@@ -1055,7 +1056,7 @@ function summary(st) {
   // The cheapest quarter left in what the strip shows
   let best = -1;
   for (let s = st.cur; s < st.all.length; s++) if (best < 0 || st.all[s] < st.all[best]) best = s;
-  if (best >= 0) lines.push(`<div>${T("Cheapest time left", "Billigast av det som är kvar")}: ${fmtMin(best * 15)}, ${ore(st.all[best])}/kWh.</div>`);
+  if (best >= 0) lines.push(`<div>${T("Cheapest time left", "Billigaste kvarten framöver")}: ${fmtMin(best * 15)}, ${ore(st.all[best])}/kWh.</div>`);
   if (st.tmr) {
     if (S.mode === "normal") {
       const [d, e] = st.prop.periods;
@@ -1089,7 +1090,7 @@ function techReadout(st) {
   const dayLeds = S.mode === "normal" ? Math.max(1, S.N - 3) : S.N;
   const tiles = [
     [T("LED for now, counted from the cable", "Lysdioden för nu, räknat från kabeln"), T("no. ", "nr ") + (phys + 1) + T(" of ", " av ") + S.N],
-    [T("Quarters per LED", "Kvartar per lysdiod"), (res.len / dayLeds).toFixed(2)],
+    [T("Quarters per LED", "Kvartar per lysdiod"), dec(res.len / dayLeds, 2)],
     [T("Period on the strip", "Period på slingan"), res.len > 96 ? T("today and tomorrow", "idag och imorgon") : T("today", "idag")],
     [T("Cheapest – most expensive", "Billigast – dyrast"), ore(st.orig.mn) + " – " + ore(st.orig.mx)]
   ];
@@ -1154,7 +1155,7 @@ function chartText(e) {
   const rect = $("chart").getBoundingClientRect();
   const s = Math.floor((e.clientX - rect.left - chartGeom.padL) / chartGeom.bw);
   if (s < 0 || s >= chartGeom.L) return null;
-  return `${fmtMin(s * 15)} – ${fmtMin((s + 1) * 15, true)}\n${ore(st.all[s])}/kWh (${st.all[s].toFixed(3)} SEK/kWh)`;
+  return `${fmtMin(s * 15)} – ${fmtMin((s + 1) * 15, true)}\n${ore(st.all[s])}/kWh (${dec(st.all[s], 3)} SEK/kWh)`;
 }
 function hover(el, textFn) {
   el.addEventListener("mousemove", e => { const t = textFn(e); if (t) showTip(e, t, false); else hideTip(); });

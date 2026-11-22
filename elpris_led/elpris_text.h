@@ -20,7 +20,7 @@ const int LANG_SETTING_SV   = 2;
 
 #define ELPRIS_TEXTS(X) \
   /* Live status */ \
-  X(TXT_LIVE_STATUS, "Live status", "Just nu") \
+  X(TXT_LIVE_STATUS, "Live status", "Översikt") \
   X(TXT_CURRENT_PRICE, "Current price", "Pris just nu") \
   X(TXT_SPOT_NOTE, "Spot price excl. VAT, grid fees and tax", "Spotpris exkl. moms, nätavgift och skatt") \
   X(TXT_UNAVAILABLE, "unavailable", "saknas") \

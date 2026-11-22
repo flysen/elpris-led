@@ -4,6 +4,8 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+- **The lamp's web page in Swedish:** a browser set to Swedish gets the page in Swedish, others in English. Choose the language yourself under *Device → Language / Språk*. The time zone names are translated too. The config portal for setting up wifi stays in English.
+
 ## v5.1.4
 
 - **Fixed: v5.1.1 to v5.1.3 could hang while fetching prices**, so the web page and wireless updates didn't answer and the strip stood still. The lamp now reads every answer itself and gives up after 15 seconds at most, so a slow or odd server can never hold it up.

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <time.h>
 #include "../elpris_led/elpris_logic.h"
+#include "../elpris_led/elpris_text.h"
 
 static int passed = 0, failed = 0;
 static const char* SWEDEN_TZ = "CET-1CEST,M3.5.0,M10.5.0/3";   // the lamp's default
@@ -142,6 +143,8 @@ static void testTimeZones() {
 
     snprintf(name, sizeof(name), "%s: has a label", zone.tz);
     checkTrue(name, zone.label[0] != '\0');
+    snprintf(name, sizeof(name), "%s: has a Swedish label", zone.tz);
+    checkTrue(name, zone.labelSv && zone.labelSv[0] != '\0');
     for (int other = 0; other < z; other++) {
       snprintf(name, sizeof(name), "%s: listed only once", zone.label);
       checkTrue(name, strcmp(TIME_ZONES[other].tz, zone.tz) != 0);
@@ -892,6 +895,62 @@ static void testFirmwareChecks() {
   checkTrue("firmwareSizeProblem: a tiny file is not firmware", firmwareSizeProblem(1200, slot) != nullptr);
 }
 
+// ---------- Texts in English and Swedish ----------
+
+// Number of characters in s that equal c
+static int countChar(const char* s, char c) {
+  int n = 0;
+  for (; *s; s++) if (*s == c) n++;
+  return n;
+}
+
+static void testTexts() {
+  bool allThere = true, sameEdges = true, sameMarkup = true;
+  for (int id = 0; id < TXT_COUNT; id++) {
+    const char* en = tr(LANG_EN, id);
+    const char* sv = tr(LANG_SV, id);
+    if (!en || !sv || !en[0] || !sv[0]) { allThere = false; printf("     missing text %d\n", id); continue; }
+    // Pieces of a sentence keep their spaces at the ends, so the page's sentences don't run together
+    size_t le = strlen(en), ls = strlen(sv);
+    if ((en[0] == ' ') != (sv[0] == ' ') || (en[le - 1] == ' ') != (sv[ls - 1] == ' ')) {
+      sameEdges = false; printf("     spaces differ: \"%s\" / \"%s\"\n", en, sv);
+    }
+    // The same HTML markup in both languages
+    if (countChar(en, '<') != countChar(sv, '<') || countChar(en, '>') != countChar(sv, '>')) {
+      sameMarkup = false; printf("     markup differs: \"%s\"\n", en);
+    }
+  }
+  checkTrue("texts: every text exists in English and Swedish", allThere);
+  checkTrue("texts: pieces of sentences have the same spaces at the ends in both languages", sameEdges);
+  checkTrue("texts: the same HTML tags in both languages", sameMarkup);
+  checkTrue("texts: an unknown id gives an empty string", tr(LANG_EN, -1)[0] == '\0' && tr(LANG_SV, TXT_COUNT)[0] == '\0');
+  checkTrue("texts: an unknown language gives English", strcmp(tr((Lang)7, TXT_SAVE), "Save changes") == 0);
+  checkTrue("texts: Swedish is Swedish", strcmp(tr(LANG_SV, TXT_SAVE), "Spara ändringar") == 0);
+  checkTrue("texts: the page's lang attribute", strcmp(tr(LANG_EN, TXT_HTML_LANG), "en") == 0 && strcmp(tr(LANG_SV, TXT_HTML_LANG), "sv") == 0);
+}
+
+static void testChooseLanguage() {
+  check("chooseLanguage: English setting wins over a Swedish browser", chooseLanguage(LANG_SETTING_EN, "sv-SE,sv;q=0.9"), LANG_EN);
+  check("chooseLanguage: Swedish setting wins over an English browser", chooseLanguage(LANG_SETTING_SV, "en-US,en;q=0.9"), LANG_SV);
+  check("chooseLanguage: automatic, Swedish browser", chooseLanguage(LANG_SETTING_AUTO, "sv-SE,sv;q=0.9,en-US;q=0.8,en;q=0.7"), LANG_SV);
+  check("chooseLanguage: automatic, plain sv", chooseLanguage(LANG_SETTING_AUTO, "sv"), LANG_SV);
+  check("chooseLanguage: automatic, upper case SV-se", chooseLanguage(LANG_SETTING_AUTO, "SV-se"), LANG_SV);
+  check("chooseLanguage: automatic, English browser", chooseLanguage(LANG_SETTING_AUTO, "en-GB,en;q=0.9"), LANG_EN);
+  check("chooseLanguage: automatic, English first, Swedish second", chooseLanguage(LANG_SETTING_AUTO, "en-US,en;q=0.9,sv;q=0.8"), LANG_EN);
+  check("chooseLanguage: automatic, other language first, then Swedish", chooseLanguage(LANG_SETTING_AUTO, "de-DE,de;q=0.9,sv;q=0.5"), LANG_SV);
+  check("chooseLanguage: automatic, only other languages gives English", chooseLanguage(LANG_SETTING_AUTO, "nb-NO,nb;q=0.9,da;q=0.8"), LANG_EN);
+  check("chooseLanguage: automatic, Swedish refused with q=0", chooseLanguage(LANG_SETTING_AUTO, "sv;q=0,en;q=0.5"), LANG_EN);
+  check("chooseLanguage: automatic, Swedish refused with q=0.000", chooseLanguage(LANG_SETTING_AUTO, "sv;q=0.000"), LANG_EN);
+  check("chooseLanguage: automatic, q=0.05 still counts", chooseLanguage(LANG_SETTING_AUTO, "sv;q=0.05"), LANG_SV);
+  check("chooseLanguage: automatic, spaces around the parts", chooseLanguage(LANG_SETTING_AUTO, " de ; q=0.9 , sv ; q=0.8"), LANG_SV);
+  check("chooseLanguage: automatic, \"sve\" is not Swedish", chooseLanguage(LANG_SETTING_AUTO, "sve,sv-x"), LANG_SV);
+  check("chooseLanguage: automatic, a long tag is not confused", chooseLanguage(LANG_SETTING_AUTO, "svenskaspråket"), LANG_EN);
+  check("chooseLanguage: automatic, * gives English", chooseLanguage(LANG_SETTING_AUTO, "*"), LANG_EN);
+  check("chooseLanguage: automatic, empty header gives English", chooseLanguage(LANG_SETTING_AUTO, ""), LANG_EN);
+  check("chooseLanguage: automatic, no header gives English", chooseLanguage(LANG_SETTING_AUTO, nullptr), LANG_EN);
+  check("chooseLanguage: an unknown setting is treated as automatic", chooseLanguage(9, "sv"), LANG_SV);
+}
+
 int main() {
   useTimeZone(SWEDEN_TZ);   // same as the lamp's default
 
@@ -901,6 +960,8 @@ int main() {
   testDayLengths();
   testLocalHourSlot();
   testTimeZones();
+  testTexts();
+  testChooseLanguage();
   testLedSlotRange();
   testLedTimeState();
   testPhysicalLed();

@@ -10,14 +10,15 @@ const int SLOT_SEC = 900;   // 15 minutes
 const unsigned long BACKOFF_MIN_MS = 30UL * 1000UL;
 const unsigned long BACKOFF_MAX_MS = 30UL * 60UL * 1000UL;
 
-// Time zones offered in the web UI. The value is a POSIX TZ rule, which includes daylight saving time.
-// The first entry is the default. Every rule is checked by the tests (offsets and DST change days).
-struct TimeZoneChoice { const char* label; const char* tz; };
+// Time zones offered in the web UI, with their names in English and Swedish. The value is a POSIX TZ rule,
+// which includes daylight saving time. The first entry is the default. Every rule is checked by the tests
+// (offsets and DST change days).
+struct TimeZoneChoice { const char* label; const char* tz; const char* labelSv; };
 const TimeZoneChoice TIME_ZONES[] = {
-  {"Sweden, Norway, Denmark, Central Europe", "CET-1CEST,M3.5.0,M10.5.0/3"},
-  {"Finland, Estonia, Latvia, Lithuania",     "EET-2EEST,M3.5.0/3,M10.5.0/4"},
-  {"United Kingdom, Ireland",                 "GMT0BST,M3.5.0/1,M10.5.0"},
-  {"UTC (no daylight saving time)",           "UTC0"},
+  {"Sweden, Norway, Denmark, Central Europe", "CET-1CEST,M3.5.0,M10.5.0/3",   "Sverige, Norge, Danmark, Centraleuropa"},
+  {"Finland, Estonia, Latvia, Lithuania",     "EET-2EEST,M3.5.0/3,M10.5.0/4", "Finland, Estland, Lettland, Litauen"},
+  {"United Kingdom, Ireland",                 "GMT0BST,M3.5.0/1,M10.5.0",     "Storbritannien, Irland"},
+  {"UTC (no daylight saving time)",           "UTC0",                         "UTC (ingen sommartid)"},
 };
 const int TIME_ZONE_COUNT = sizeof(TIME_ZONES) / sizeof(TIME_ZONES[0]);
 

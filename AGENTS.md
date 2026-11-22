@@ -12,6 +12,7 @@ Elpris-LED: firmware for an ESP32 driving a WS2812B LED strip that shows the day
 |---|---|
 | `elpris_led/elpris_led.ino` | The sketch: wifi, fetching prices, updates, web UI, drawing the strip |
 | `elpris_led/elpris_logic.h` | Pure logic with no Arduino dependencies: time and DST, slots, LED mapping, color levels, normal price, versions, the blue status LED's patterns. Tested |
+| `elpris_led/elpris_text.h` | The web page's texts in English and Swedish, and how the page's language is chosen. Tested |
 | `elpris_led/platform.h` | Board-specific includes, pins and small helpers (ESP32) |
 | `tests/test_logic.cpp`, `Makefile` | Unit tests for `elpris_logic.h`, run on a normal computer |
 | `scripts/` | Build, packaging, release-tag check, dependency pins (`arduino-deps.sh`) and the emulator's price fetcher |
@@ -24,7 +25,7 @@ Elpris-LED: firmware for an ESP32 driving a WS2812B LED strip that shows the day
 
 ## Rules that must not be broken
 
-1. **English only** in the repository: code, comments, UI text, docs, commit messages and pull requests. (The maintainers may talk to you in Swedish; answer them in their language, but write English into the repo.)
+1. **English only** in the repository: code, comments, docs, commit messages and pull requests. (The maintainers may talk to you in Swedish; answer them in their language, but write English into the repo.) The one exception is **translations of UI text**: the lamp's web page is in English and Swedish, and every text is a line in `elpris_led/elpris_text.h` with both languages. Write the English first, then the Swedish; never put UI text straight into the sketch. The config portal stays in English.
 2. **No passwords or keys in the code.** OTA and config portal passwords are set in the lamp's web UI and stored on the device.
 3. **Lamps in the field must keep working after an update:**
    - Never change the **flash layout**: ESP32 *Minimal SPIFFS* (`min_spiffs`). Over-the-air updates can't change it.

@@ -91,6 +91,7 @@ Try both modes, and all the settings, in the [emulator](https://flysen.github.io
 | Day / night brightness | Overall brightness of the strip, 0–255 |
 | Install new releases automatically | On by default |
 | Show status on the board's blue LED | On by default. Off: the LED stays dark, except while setting up wifi |
+| Language / Språk | The web page's language: *Automatic* (default: Swedish if the browser asks for it, otherwise English), English or Svenska. The config portal is in English |
 | Also install test versions | Off by default. On: release candidates are installed too, wirelessly (see [Updating](#updating)) |
 | OTA password | Turns on updates from the Arduino IDE; empty means off |
 | Config portal password | Protects the *Elpris-LED-Config* wifi that opens when the lamp can't reach your network |
@@ -103,7 +104,7 @@ All prices are spot prices excluding VAT, grid fees and energy tax. They come fr
 - "Now" is easy to see: a white pulse on the current 15 minutes, and dimmed past hours with adjustable brightness.
 - The direction can be reversed, so time reads left to right however the strip is mounted.
 - Time zone chosen from a list with plain names; daylight saving time and 23- and 25-hour days are handled.
-- All settings in a web UI at `http://elpris-led.local` (see the table above).
+- All settings in a web UI at `http://elpris-led.local` (see the table above), in English or Swedish.
 - Shows up as `elpris-led-xxxxxx` in the router, so it's easy to find.
 - Updates itself: new releases are found within six hours and installed automatically. Testers can opt in to release candidates.
 - The board's blue LED shows what the lamp is doing, and its network address after it starts.

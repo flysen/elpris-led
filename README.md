@@ -246,7 +246,7 @@ Before tagging, rename *Unreleased* in `CHANGELOG.md` to the new version (in a p
 The release stops before anything is published if:
 
 - the tag isn't `v2.1`, `v2.1.3` or `v2.1-rc1`,
-- the tagged commit isn't on `main`,
+- a stable tag's commit isn't on `main` (release candidates may be tagged on a pull request's branch, to try a change on a lamp before merging),
 - a stable tag isn't higher than the previous stable release (lamps would ignore it),
 - any test or build check fails.
 

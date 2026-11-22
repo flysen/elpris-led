@@ -11,10 +11,12 @@ if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?(-rc[0-9]+)?$ ]]; then
   exit 1
 fi
 
-# Releases are built only from code that has been merged to main (and so passed CI)
+# Stable releases are built only from code that has been merged to main (and so passed CI). Release
+# candidates may also be tagged on a pull request's branch, so a change can run on a lamp with the test
+# channel before it is merged.
 git fetch --quiet origin main
-if ! git merge-base --is-ancestor HEAD origin/main; then
-  echo "::error::Tag $TAG points to a commit that is not on main."
+if [[ "$TAG" != *-* ]] && ! git merge-base --is-ancestor HEAD origin/main; then
+  echo "::error::Tag $TAG points to a commit that is not on main. Only release candidates (-rcN) may be tagged on a branch."
   exit 1
 fi
 

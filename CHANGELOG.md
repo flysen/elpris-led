@@ -4,6 +4,11 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+## v5.1.2
+
+- **Fixed: v5.1.1 could hang while fetching prices**, so its web page and wireless updates didn't answer and the strip stood still. The lamp now reads every answer itself and gives up after 15 seconds at most, so a slow or odd server can never hold it up.
+- **Fixed: updates could fail with "Verify Bin Header Failed"** although the file was fine. The lamp now downloads the new firmware itself, checks it and tries up to three times.
+
 ## v5.1.1
 
 - **Fixed: the lamp could stop getting prices** and pulse purple. When the price server answered from its cache, it closed the connection so fast that the lamp only read the first few prices of the day. The lamp now reads the whole answer before using it, and an answer that was cut off is never taken for a whole day. The same fix applies to the check for updates.

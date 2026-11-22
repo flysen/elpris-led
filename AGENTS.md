@@ -43,7 +43,7 @@ No pull request without test cases. In the pull request's *Test cases* section, 
 - **Automated** wherever there is logic: name the tests added or changed in `tests/test_logic.cpp`, and always "CI passes: tests, lint, firmware".
 - **Coverage:** the tests must run at least **95 % of the lines** and **90 % of the branches** in `elpris_logic.h`. CI measures it on every pull request (`make coverage`, numbers on the run's summary page) and fails below the limits. Add tests with new logic so the numbers don't drop; don't lower the limits to make a pull request pass.
 - **By hand** for what can't be tested automatically, written so someone else can repeat it: what to do and what should happen. For example "Emulator: choose 3 levels → the legend shows green, yellow, red", or "Lamp: Check for updates now → restarts and shows the new version".
-- **Fetching prices and installing updates** are what keep lamps working in people's homes. Changes there get unit tests for their logic (like `parsePrices()` with the answers in `tests/fixtures/`) and go out as a **release candidate** on a lamp with the test channel for at least a day before the stable release. No admin bypass for these.
+- **Fetching prices and installing updates** are what keep lamps working in people's homes. Changes there get unit tests for their logic (like `parsePrices()` with the answers in `tests/fixtures/`) and go out as a **release candidate** on a lamp with the test channel for at least a day before they are merged: tag `vX.Y.Z-rcN` on the pull request's branch (release candidates may be tagged on a branch, stable releases only on `main`). No admin bypass for these.
 - Changes to documentation only still get a test case, such as "Links in the README open the right pages".
 
 ## How to work
@@ -76,9 +76,10 @@ CI runs the same on every pull request. Local and CI builds report version `dev`
 - **`DATA_PIN` is a `constexpr`, not a macro;** FastLED uses that name internally.
 - **Default arguments** on sketch functions can break the generated prototypes; pass all arguments explicitly.
 - **Timer callbacks:** the blue LED is driven by a `Ticker`, which runs in another task. It only reads flags (`volatile`) and writes the LED; keep it that way, no network, strip or `String` work in it.
-- **Read the whole HTTP response before parsing it** (`http.getString()`, HTTP/1.1). With HTTP/1.0 the price server sends no length and closes the connection as soon as a cached response is sent; reading it a little at a time while parsing cut it off after a few prices (v5.0-v5.1).
+- **HTTP answers are read with `startGet()` and `readBody()`** in the sketch: HTTP/1.0 with `Connection: close`, the whole answer read as fast as it arrives, and a hard 15-second limit. Don't parse while reading (the price server closes the connection right after a cached answer, which cut the lamp off after a few prices in v5.0-v5.1), and don't use `HTTPClient::getString()` (over HTTP/1.1 the price server keeps the connection open and chunks the answer, and v5.1.1 could hang for minutes). Nothing in the loop may block for long: the web page, OTA and the strip stop while it does.
+- **Firmware is downloaded with `downloadFirmware()`, not `HTTPUpdate`.** `HTTPUpdate` checks the first byte before it has arrived and reports "Verify Bin Header Failed" for a good file.
 - **Release candidates** (`vX.Y-rcN`) are pre-releases: the install page and normal lamps ignore them; lamps with the test channel install them.
 
 ## Releases
 
-Maintainers release from the browser: rename *Unreleased* in `CHANGELOG.md` to the version in a pull request, then *Releases → Draft a new release*, tag `vX.Y[.Z]` (or `vX.Y-rcN` as a pre-release) on `main`, and paste the changelog section as release notes. `release.yml` checks the tag, runs the tests, builds the firmware and publishes the release and the install page.
+Release candidates can be tagged on a pull request's branch (choose the branch as target); stable releases only on `main`. Maintainers release from the browser: rename *Unreleased* in `CHANGELOG.md` to the version in a pull request, then *Releases → Draft a new release*, tag `vX.Y[.Z]` (or `vX.Y-rcN` as a pre-release) on `main`, and paste the changelog section as release notes. `release.yml` checks the tag, runs the tests, builds the firmware and publishes the release and the install page.

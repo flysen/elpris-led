@@ -513,3 +513,28 @@ inline int parsePrices(const char* body, size_t len, PriceEntry* out, int maxOut
   }
   return n;
 }
+
+// =====================================================================
+//  Reading HTTP answers and firmware downloads (the network part is in the sketch)
+// =====================================================================
+
+// Whether an HTTP answer ended properly: all of the length the server gave arrived, or, without a length,
+// the server closed the connection (instead of the lamp giving up).
+inline bool httpBodyComplete(long expected, size_t received, bool closedByServer) {
+  if (expected >= 0) return (long)received >= expected;
+  return closedByServer;
+}
+
+// A firmware download must be ESP32 firmware: its first byte is the image magic 0xE9
+inline bool firmwareHeaderOk(const uint8_t* buf, size_t n) {
+  return buf && n >= 1 && buf[0] == 0xE9;
+}
+
+// Why a firmware of this size can't be installed, or nullptr if it can. The server must give the size, and
+// it must fit in the free app slot.
+inline const char* firmwareSizeProblem(long size, long freeSpace) {
+  if (size <= 0) return "the server didn't say how big the firmware is";
+  if (size < 4096) return "the file is too small to be firmware";
+  if (size > freeSpace) return "the firmware is bigger than the free app space";
+  return nullptr;
+}

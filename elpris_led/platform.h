@@ -13,7 +13,7 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
-#include <HTTPUpdate.h>
+#include <Update.h>
 #include <WebServer.h>
 #include <Preferences.h>
 #include <ESPmDNS.h>

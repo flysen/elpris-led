@@ -17,6 +17,6 @@ A pull request is ready to merge when all its test cases are ticked.
 
 - [ ] CI passes: tests, lint, firmware
 <!-- If the pull request changes fetching prices or updates, keep these. Tag a release candidate (vX.Y.Z-rcN) on this branch for them. -->
-- [ ] Release candidate on a lamp with the test channel: it has run for at least a day and fetched today, tomorrow and the past days without errors
+- [ ] Release candidate installed on a lamp (espota, or the test channel): it has run for at least a day and fetched today, tomorrow and the past days without errors
 - [ ] Check for updates now on that lamp: it finds and installs the next version
 - [ ] 

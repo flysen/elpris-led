@@ -30,6 +30,12 @@ if [[ "$TAG" != *-* ]]; then
       exit 1
     fi
   fi
+  # The tagged commit must describe this release in CHANGELOG.md, so a tag set before the pull request
+  # with the changes was merged (as happened with v5.1.2 and v5.1.3) stops here
+  if ! grep -qE "^## (.* )?${TAG//./\\.}( .*)?$" CHANGELOG.md; then
+    echo "::error::CHANGELOG.md on the tagged commit has no heading for $TAG. Merge the pull request that renames Unreleased to $TAG first, then tag."
+    exit 1
+  fi
   echo "Stable release $TAG (previous: ${PREV:-none})"
 else
   echo "Release candidate $TAG: published as a pre-release, lamps will not install it automatically"

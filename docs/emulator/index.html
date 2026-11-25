@@ -78,6 +78,7 @@ details.advanced > summary::before { content: "▸ "; color: var(--accent); }
 details.advanced[open] > summary::before { content: "▾ "; }
 details.advanced[open] > summary { margin-bottom: 12px; }
 .adv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+.lang { float: right; margin-left: 12px; }
 .url { font-family: var(--mono); font-size: 12px; word-break: break-all; color: var(--muted); }
 .msg { font-size: 13px; min-height: 1.2em; }
 .msg.err { color: #ff8a7a; }
@@ -93,28 +94,29 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
 <body>
 <main>
   <header>
-    <h1>Elpris-LED emulator</h1>
-    <p>See what an Elpris-LED lamp shows right now, and try its settings before you change them on your own lamp. It opens on today's real electricity prices. <a href="../">Install page</a> · <a href="https://github.com/flysen/elpris-led">GitHub</a></p>
+    <button id="langBtn" class="lang" type="button" lang="sv">Svenska</button>
+    <h1 data-sv="Elpris-LED-emulator">Elpris-LED emulator</h1>
+    <p data-sv="Se vad en Elpris-LED-lampa visar just nu, och prova inställningarna innan du ändrar dem på din egen lampa. Den öppnar med dagens riktiga elpriser. <a href='../'>Installationssida</a> · <a href='https://github.com/flysen/elpris-led'>GitHub</a>">See what an Elpris-LED lamp shows right now, and try its settings before you change them on your own lamp. It opens on today's real electricity prices. <a href="../">Install page</a> · <a href="https://github.com/flysen/elpris-led">GitHub</a></p>
   </header>
 
-  <section class="card stage" aria-label="What the lamp shows">
+  <section class="card stage" aria-label="What the lamp shows" data-sv-aria="Vad lampan visar">
     <div class="summary" id="summary" aria-live="polite"></div>
 
     <div class="strips">
       <div id="propBlock">
         <div class="strip-head">
-          <span class="name">Compared with a normal price</span>
+          <span class="name" data-sv="Jämfört med ett normalpris">Compared with a normal price</span>
           <div class="legend" id="propKey"></div>
         </div>
-        <canvas id="stripProp" class="strip" aria-label="The LED strip, compared with a normal price"></canvas>
+        <canvas id="stripProp" data-sv-aria="LED-slingan, jämfört med ett normalpris" class="strip" aria-label="The LED strip, compared with a normal price"></canvas>
       </div>
 
       <div id="origBlock">
         <div class="strip-head">
-          <span class="name">Cheapest to most expensive</span>
+          <span class="name" data-sv="Billigast till dyrast">Cheapest to most expensive</span>
           <div class="legend"><span id="lgOrigLo"></span><canvas id="lgOrig" width="300" height="20"></canvas><span id="lgOrigHi"></span></div>
         </div>
-        <canvas id="stripOrig" class="strip" aria-label="The LED strip, cheapest to most expensive"></canvas>
+        <canvas id="stripOrig" data-sv-aria="LED-slingan, billigast till dyrast" class="strip" aria-label="The LED strip, cheapest to most expensive"></canvas>
       </div>
 
       <div id="variantBlock" class="hidden">
@@ -123,58 +125,58 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
           <span class="chip" id="varDesc"></span>
           <div class="legend"><span id="lgVarLo"></span><canvas id="lgVar" width="300" height="20"></canvas><span id="lgVarHi"></span></div>
         </div>
-        <canvas id="stripVar" class="strip" aria-label="Experimental color scale"></canvas>
+        <canvas id="stripVar" data-sv-aria="Experimentell färgskala" class="strip" aria-label="Experimental color scale"></canvas>
       </div>
     </div>
 
-    <p class="help">Hover over an LED or the chart, or tap it on a phone, for details. Midnight is at the cable end of the strip, on the left here.</p>
+    <p class="help" data-sv="Håll muspekaren över en lysdiod eller diagrammet, eller tryck på den i mobilen, för detaljer. Midnatt är i slingans kabelände, till vänster här.">Hover over an LED or the chart, or tap it on a phone, for details. Midnight is at the cable end of the strip, on the left here.</p>
 
     <div>
-      <h2 style="margin-bottom:6px">Prices per 15 minutes <span class="help">(öre/kWh, spot price excl. VAT, grid fees and tax)</span></h2>
-      <canvas id="chart" class="chart" aria-label="Price chart for today and tomorrow"></canvas>
+      <h2 style="margin-bottom:6px" data-sv="Priser per kvart <span class='help'>(öre/kWh, spotpris exkl. moms, nätavgift och skatt)</span>">Prices per 15 minutes <span class="help">(öre/kWh, spot price excl. VAT, grid fees and tax)</span></h2>
+      <canvas id="chart" data-sv-aria="Prisdiagram för idag och imorgon" class="chart" aria-label="Price chart for today and tomorrow"></canvas>
     </div>
   </section>
 
   <section class="controls">
     <div class="card">
-      <h2>Prices and time</h2>
+      <h2 data-sv="Priser och tid">Prices and time</h2>
       <div class="ctl">
-        <div class="lab"><label for="scenario">Prices</label></div>
+        <div class="lab"><label for="scenario" data-sv="Priser">Prices</label></div>
         <select id="scenario">
           <option value="real" disabled>Real prices (loading…)</option>
-          <option value="winter" selected>Example: ordinary winter day</option>
-          <option value="flat">Example: evenly cheap day</option>
-          <option value="spike">Example: a high evening peak</option>
-          <option value="negative">Example: negative prices around midday</option>
-          <option value="cheapweek">Example: cheap week, more expensive today</option>
-          <option value="dearmorrow">Example: normal day, very expensive tomorrow</option>
-          <option value="pasted" disabled>Prices you pasted</option>
+          <option value="winter" selected data-sv="Exempel: vanlig vinterdag">Example: ordinary winter day</option>
+          <option value="flat" data-sv="Exempel: jämnt billig dag">Example: evenly cheap day</option>
+          <option value="spike" data-sv="Exempel: en hög kvällstopp">Example: a high evening peak</option>
+          <option value="negative" data-sv="Exempel: negativa priser mitt på dagen">Example: negative prices around midday</option>
+          <option value="cheapweek" data-sv="Exempel: billig vecka, dyrare idag">Example: cheap week, more expensive today</option>
+          <option value="dearmorrow" data-sv="Exempel: vanlig dag, mycket dyr morgondag">Example: normal day, very expensive tomorrow</option>
+          <option value="pasted" disabled data-sv="Priser du har klistrat in">Prices you pasted</option>
         </select>
       </div>
       <div class="ctl" id="realAreaBox">
-        <div class="lab"><label for="realArea">Price area</label></div>
+        <div class="lab"><label for="realArea" data-sv="Elområde">Price area</label></div>
         <select id="realArea">
-          <option value="SE1">SE1 – Luleå, northern Sweden</option>
-          <option value="SE2">SE2 – Sundsvall, northern central Sweden</option>
-          <option value="SE3" selected>SE3 – Stockholm, southern central Sweden</option>
-          <option value="SE4">SE4 – Malmö, southern Sweden</option>
+          <option value="SE1" data-sv="SE1 – Luleå, norra Sverige">SE1 – Luleå, northern Sweden</option>
+          <option value="SE2" data-sv="SE2 – Sundsvall, norra Mellansverige">SE2 – Sundsvall, northern central Sweden</option>
+          <option value="SE3" selected data-sv="SE3 – Stockholm, södra Mellansverige">SE3 – Stockholm, southern central Sweden</option>
+          <option value="SE4" data-sv="SE4 – Malmö, södra Sverige">SE4 – Malmö, southern Sweden</option>
         </select>
         <p class="help" id="realInfo"></p>
       </div>
-      <div class="btnrow" id="reseedBox" style="margin-bottom:12px"><button id="reseed" type="button">Another example day</button></div>
-      <label class="check"><input id="live" type="checkbox"><span>Use the real time</span></label>
+      <div class="btnrow" id="reseedBox" style="margin-bottom:12px"><button id="reseed" type="button" data-sv="En annan exempeldag">Another example day</button></div>
+      <label class="check"><input id="live" type="checkbox"><span data-sv="Följ den riktiga tiden">Use the real time</span></label>
       <div class="ctl">
-        <div class="lab"><label for="time">Time of day</label><output id="timeOut"></output></div>
+        <div class="lab"><label for="time" data-sv="Tid på dygnet">Time of day</label><output id="timeOut"></output></div>
         <input id="time" type="range" min="0" max="1439" step="1" value="840">
         <p class="help" id="timeHelp">Drag to see the strip at another time, or press Play to watch a day go by.</p>
       </div>
       <div class="two">
         <div class="ctl">
-          <div class="lab"><label for="speed">Speed</label></div>
+          <div class="lab"><label for="speed" data-sv="Hastighet">Speed</label></div>
           <select id="speed">
-            <option value="15">15 minutes per second</option>
-            <option value="60" selected>1 hour per second</option>
-            <option value="180">3 hours per second</option>
+            <option value="15" data-sv="15 minuter per sekund">15 minutes per second</option>
+            <option value="60" selected data-sv="1 timme per sekund">1 hour per second</option>
+            <option value="180" data-sv="3 timmar per sekund">3 hours per second</option>
           </select>
         </div>
         <div class="ctl">
@@ -185,229 +187,230 @@ footer { color: var(--muted); font-size: 12px; max-width: 80ch; }
     </div>
 
     <div class="card">
-      <h2>The lamp's settings</h2>
-      <p class="help" style="margin-bottom:12px">The same settings, with the same names, as on your lamp's own web page.</p>
+      <h2 data-sv="Lampans inställningar">The lamp's settings</h2>
+      <p class="help" style="margin-bottom:12px" data-sv="Samma inställningar, med samma namn, som på din lampas egen webbsida.">The same settings, with the same names, as on your lamp's own web page.</p>
       <div class="ctl">
-        <div class="lab"><label for="leds">Number of LEDs</label><output id="ledsOut"></output></div>
+        <div class="lab"><label for="leds" data-sv="Antal lysdioder">Number of LEDs</label><output id="ledsOut"></output></div>
         <input id="leds" type="range" min="10" max="300" step="1" value="100">
       </div>
       <div class="ctl">
-        <div class="lab"><label for="colorMode">Colors</label></div>
+        <div class="lab"><label for="colorMode" data-sv="Färger">Colors</label></div>
         <select id="colorMode">
-          <option value="normal" selected>Compared with a normal price</option>
-          <option value="range">Cheapest to most expensive</option>
+          <option value="normal" selected data-sv="Jämfört med ett normalpris">Compared with a normal price</option>
+          <option value="range" data-sv="Billigast till dyrast">Cheapest to most expensive</option>
         </select>
         <p class="help" id="colorModeHelp"></p>
       </div>
       <div id="normalSettings">
         <div class="ctl">
-          <div class="lab"><label for="histDays">Normal price: past days</label><output id="histDaysOut"></output></div>
+          <div class="lab"><label for="histDays" data-sv="Normalpris: föregående dagar">Normal price: past days</label><output id="histDaysOut"></output></div>
           <input id="histDays" type="range" min="0" max="7" step="1" value="3">
           <p class="help" id="histHelp"></p>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="dead">Doesn't matter within</label><output id="deadOut"></output></div>
+          <div class="lab"><label for="dead" data-sv="Spelar ingen roll inom">Doesn't matter within</label><output id="deadOut"></output></div>
           <input id="dead" type="range" min="5" max="100" step="5" value="20">
-          <p class="help">Prices this close to the normal price are yellow.</p>
+          <p class="help" data-sv="Priser så här nära normalpriset är gula.">Prices this close to the normal price are yellow.</p>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="extreme">Very cheap or expensive from</label><output id="extremeOut"></output></div>
+          <div class="lab"><label for="extreme" data-sv="Mycket billigt eller dyrt från">Very cheap or expensive from</label><output id="extremeOut"></output></div>
           <input id="extreme" type="range" min="20" max="300" step="10" value="80">
-          <p class="help">Prices this far from the normal price are green or red. Only used with 5 levels.</p>
+          <p class="help" data-sv="Priser så här långt från normalpriset är gröna eller röda. Används bara med 5 nivåer.">Prices this far from the normal price are green or red. Only used with 5 levels.</p>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="levels">Levels</label></div>
+          <div class="lab"><label for="levels" data-sv="Nivåer">Levels</label></div>
           <select id="levels">
-            <option value="5" selected>5: green, yellow-green, yellow, orange, red</option>
-            <option value="3">3: green, yellow, red</option>
+            <option value="5" selected data-sv="5: grönt, gulgrönt, gult, orange, rött">5: green, yellow-green, yellow, orange, red</option>
+            <option value="3" data-sv="3: grönt, gult, rött">3: green, yellow, red</option>
           </select>
         </div>
-        <label class="check"><input id="normTomorrow" type="checkbox" checked><span>Count tomorrow in the normal price
+        <label class="check"><input id="normTomorrow" type="checkbox" checked><span data-sv="Räkna med imorgon i normalpriset<br><span class='help'>Dagens färger kan då ändras när morgondagens priser kommer: en dyr morgondag gör idag grönare.</span>">Count tomorrow in the normal price
           <br><span class="help">Today's colors may then change when tomorrow's prices arrive: an expensive tomorrow makes today greener.</span></span></label>
       </div>
-      <label class="check"><input id="reverse" type="checkbox"><span>Reverse direction
+      <label class="check"><input id="reverse" type="checkbox"><span data-sv="Omvänd riktning<br><span class='help'>Midnatt i slingans andra ände.</span>">Reverse direction
         <br><span class="help">Midnight at the other end of the strip.</span></span></label>
-      <label class="check"><input id="pulseWhite" type="checkbox" checked><span>Pulse the current 15 minutes towards white</span></label>
+      <label class="check"><input id="pulseWhite" type="checkbox" checked><span data-sv="Låt den aktuella kvarten pulsera mot vitt">Pulse the current 15 minutes towards white</span></label>
       <div class="ctl">
-        <div class="lab"><label for="pastPct">Brightness of passed time</label><output id="pastOut"></output></div>
+        <div class="lab"><label for="pastPct" data-sv="Ljusstyrka för passerad tid">Brightness of passed time</label><output id="pastOut"></output></div>
         <input id="pastPct" type="range" min="0" max="100" step="1" value="10">
-        <p class="help">100 % = not dimmed, 0 % = off.</p>
+        <p class="help" data-sv="100 % = inte dämpat, 0 % = släckt.">100 % = not dimmed, 0 % = off.</p>
       </div>
-      <label class="check"><input id="applyBright" type="checkbox"><span>Show day and night brightness</span></label>
+      <label class="check"><input id="applyBright" type="checkbox"><span data-sv="Visa ljusstyrka för dag och natt">Show day and night brightness</span></label>
       <div id="brightBox" class="hidden">
-        <label class="check"><input id="nightMode" type="checkbox" checked><span>Use night mode</span></label>
+        <label class="check"><input id="nightMode" type="checkbox" checked><span data-sv="Använd nattläge">Use night mode</span></label>
         <div class="two">
-          <div class="ctl"><div class="lab"><label for="nstart">Night mode start</label></div><input id="nstart" type="number" min="0" max="23" value="23"></div>
-          <div class="ctl"><div class="lab"><label for="nend">Night mode end</label></div><input id="nend" type="number" min="0" max="23" value="6"></div>
+          <div class="ctl"><div class="lab"><label for="nstart" data-sv="Nattläge börjar">Night mode start</label></div><input id="nstart" type="number" min="0" max="23" value="23"></div>
+          <div class="ctl"><div class="lab"><label for="nend" data-sv="Nattläge slutar">Night mode end</label></div><input id="nend" type="number" min="0" max="23" value="6"></div>
         </div>
         <div class="two">
-          <div class="ctl"><div class="lab"><label for="bday">Day brightness</label><output id="bdayOut"></output></div><input id="bday" type="range" min="1" max="255" value="40"></div>
-          <div class="ctl"><div class="lab"><label for="bnight">Night brightness</label><output id="bnightOut"></output></div><input id="bnight" type="range" min="0" max="255" value="5"></div>
+          <div class="ctl"><div class="lab"><label for="bday" data-sv="Ljusstyrka dag">Day brightness</label><output id="bdayOut"></output></div><input id="bday" type="range" min="1" max="255" value="40"></div>
+          <div class="ctl"><div class="lab"><label for="bnight" data-sv="Ljusstyrka natt">Night brightness</label><output id="bnightOut"></output></div><input id="bnight" type="range" min="0" max="255" value="5"></div>
         </div>
       </div>
     </div>
   </section>
 
   <details class="card advanced" id="advanced">
-    <summary>Advanced</summary>
+    <summary data-sv="Avancerat">Advanced</summary>
     <div class="adv-grid">
       <div>
-        <h3>Display</h3>
-        <label class="check"><input id="compare" type="checkbox"><span>Show both color modes, one above the other</span></label>
-        <label class="check"><input id="perceptual" type="checkbox" checked><span>Show the LEDs as the eye sees them
+        <h3 data-sv="Visning">Display</h3>
+        <label class="check"><input id="compare" type="checkbox"><span data-sv="Visa båda färglägena, ovanför varandra">Show both color modes, one above the other</span></label>
+        <label class="check"><input id="perceptual" type="checkbox" checked><span data-sv="Visa lysdioderna som ögat ser dem<br><span class='help'>En dämpad lysdiod ser ljusare ut för ögat än siffran säger: 10 % ser ut som ungefär en tredjedel. Kryssa ur för att visa de råa värdena.</span>">Show the LEDs as the eye sees them
           <br><span class="help">A dimmed LED looks brighter to the eye than the number says: 10 % looks like about a third. Untick to show the raw values.</span></span></label>
-        <label class="check"><input id="ticks" type="checkbox"><span>Mark 06, 12 and 18 on the strip with a faint white LED
+        <label class="check"><input id="ticks" type="checkbox"><span data-sv="Markera 06, 12 och 18 på slingan med en svag vit lysdiod<br><span class='help'>Bara i emulatorn, så att det är lättare att hitta längs slingan.</span>">Mark 06, 12 and 18 on the strip with a faint white LED
           <br><span class="help">Only in the emulator, to make it easier to find your way along the strip.</span></span></label>
         <div class="ctl">
-          <div class="lab"><label for="tomorrow">Tomorrow's prices</label></div>
+          <div class="lab"><label for="tomorrow" data-sv="Morgondagens priser">Tomorrow's prices</label></div>
           <select id="tomorrow">
-            <option value="auto">As the lamp: shown from 13:00, once published</option>
-            <option value="always">Always shown, if published</option>
-            <option value="never">Never shown</option>
+            <option value="auto" data-sv="Som lampan: visas från 13:00, när de är publicerade">As the lamp: shown from 13:00, once published</option>
+            <option value="always" data-sv="Visas alltid, om de är publicerade">Always shown, if published</option>
+            <option value="never" data-sv="Visas aldrig">Never shown</option>
           </select>
         </div>
-        <h3>Technical details</h3>
+        <h3 data-sv="Tekniska detaljer">Technical details</h3>
         <div class="readout" id="techReadout"></div>
       </div>
 
       <div>
-        <h3>The board's blue LED</h3>
-        <p class="help" style="margin-bottom:10px">From v5.0 the small blue LED on the ESP32 board shows what the lamp is doing, including its network address after it starts. The default settings below are the lamp's; the others are for comparison. It can be turned off in the lamp's web page.</p>
-        <canvas id="board" class="board" aria-label="ESP32 board with its blue LED"></canvas>
+        <h3 data-sv="Kortets blå lysdiod">The board's blue LED</h3>
+        <p class="help" style="margin-bottom:10px" data-sv="Från v5.0 visar den lilla blå lysdioden på ESP32-kortet vad lampan gör, och dess nätverksadress efter start. Standardinställningarna nedan är lampans, de andra finns för jämförelse. Den kan stängas av på lampans webbsida.">From v5.0 the small blue LED on the ESP32 board shows what the lamp is doing, including its network address after it starts. The default settings below are the lamp's; the others are for comparison. It can be turned off in the lamp's web page.</p>
+        <canvas id="board" data-sv-aria="ESP32-kort med sin blå lysdiod" class="board" aria-label="ESP32 board with its blue LED"></canvas>
         <p class="help" id="boardCaption" style="margin-bottom:12px"></p>
         <div class="ctl">
-          <div class="lab"><label for="boardState">The lamp is</label></div>
+          <div class="lab"><label for="boardState" data-sv="Lampans läge">The lamp is</label></div>
           <select id="boardState">
-            <option value="startup" selected>Starting up: wifi, address, fetching, OK</option>
-            <option value="portal">Waiting in its own wifi, Elpris-LED-Config</option>
-            <option value="ip">Showing its address after connecting</option>
-            <option value="ok">Working normally</option>
-            <option value="fetching">Fetching prices</option>
-            <option value="failing">Failing to fetch prices</option>
-            <option value="updating">Installing an update</option>
+            <option value="startup" selected data-sv="Startar: wifi, adress, hämtning, OK">Starting up: wifi, address, fetching, OK</option>
+            <option value="portal" data-sv="Väntar i sitt eget wifi, Elpris-LED-Config">Waiting in its own wifi, Elpris-LED-Config</option>
+            <option value="ip" data-sv="Visar sin adress efter anslutning">Showing its address after connecting</option>
+            <option value="ok" data-sv="Fungerar som vanligt">Working normally</option>
+            <option value="fetching" data-sv="Hämtar priser">Fetching prices</option>
+            <option value="failing" data-sv="Misslyckas med att hämta priser">Failing to fetch prices</option>
+            <option value="updating" data-sv="Installerar en uppdatering">Installing an update</option>
           </select>
         </div>
         <div class="two">
-          <div class="ctl"><div class="lab"><label for="ipAddr">Address</label></div><input id="ipAddr" type="text" value="172.16.1.90" inputmode="decimal" spellcheck="false"></div>
-          <div class="ctl"><div class="lab"><label for="netmask">Network mask</label></div>
+          <div class="ctl"><div class="lab"><label for="ipAddr" data-sv="Adress">Address</label></div><input id="ipAddr" type="text" value="172.16.1.90" inputmode="decimal" spellcheck="false"></div>
+          <div class="ctl"><div class="lab"><label for="netmask" data-sv="Nätmask">Network mask</label></div>
             <select id="netmask">
               <option value="3">255.255.255.0 (/24)</option>
               <option value="2" selected>255.255.0.0 (/16)</option>
               <option value="1">255.0.0.0 (/8)</option>
-              <option value="0">Whole address</option>
+              <option value="0" data-sv="Hela adressen">Whole address</option>
             </select></div>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="okStyle">When working normally</label></div>
+          <div class="lab"><label for="okStyle" data-sv="När allt fungerar">When working normally</label></div>
           <select id="okStyle">
-            <option value="slow">Slow blink</option>
-            <option value="heartbeat" selected>A short blink every 10 seconds (as the lamp)</option>
-            <option value="off">Off (as the lamp with the LED turned off)</option>
+            <option value="slow" data-sv="Långsam blinkning">Slow blink</option>
+            <option value="heartbeat" selected data-sv="En kort blinkning var tionde sekund (som lampan)">A short blink every 10 seconds (as the lamp)</option>
+            <option value="off" data-sv="Släckt (som lampan med lysdioden avstängd)">Off (as the lamp with the LED turned off)</option>
           </select>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="blinkMs">Length of a short blink</label><output id="blinkMsOut"></output></div>
+          <div class="lab"><label for="blinkMs" data-sv="Längd på en kort blinkning">Length of a short blink</label><output id="blinkMsOut"></output></div>
           <input id="blinkMs" type="range" min="150" max="500" step="25" value="250">
-          <p class="help">Longer is easier to count, shorter is quicker to show. The lamp uses 250 ms.</p>
+          <p class="help" data-sv="Längre är lättare att räkna, kortare går fortare. Lampan använder 250 ms.">Longer is easier to count, shorter is quicker to show. The lamp uses 250 ms.</p>
         </div>
       </div>
 
       <div>
-        <h3>Experiments: other color scales</h3>
-        <p class="help" style="margin-bottom:12px">Ideas for other ways to color the strip, for comparison with <i>Cheapest to most expensive</i>. These are not in the lamp.</p>
-        <label class="check"><input id="showVar" type="checkbox"><span>Show the experiment strip</span></label>
+        <h3 data-sv="Experiment: andra färgskalor">Experiments: other color scales</h3>
+        <p class="help" style="margin-bottom:12px" data-sv="Idéer för andra sätt att färglägga slingan, för jämförelse med <i>Billigast till dyrast</i>. De finns inte i lampan.">Ideas for other ways to color the strip, for comparison with <i>Cheapest to most expensive</i>. These are not in the lamp.</p>
+        <label class="check"><input id="showVar" type="checkbox"><span data-sv="Visa experimentslingan">Show the experiment strip</span></label>
         <div class="ctl">
-          <div class="lab"><label for="scale">Color scale</label></div>
+          <div class="lab"><label for="scale" data-sv="Färgskala">Color scale</label></div>
           <select id="scale">
-            <option value="relative">Cheapest to most expensive (the lamp)</option>
-            <option value="minspan" selected>Cheapest to most expensive, with a minimum span</option>
-            <option value="rank">Ranking: as many of each color</option>
-            <option value="absolute">Fixed limits in öre</option>
+            <option value="relative" data-sv="Billigast till dyrast (lampan)">Cheapest to most expensive (the lamp)</option>
+            <option value="minspan" selected data-sv="Billigast till dyrast, med ett minsta spann">Cheapest to most expensive, with a minimum span</option>
+            <option value="rank" data-sv="Rangordning: lika många av varje färg">Ranking: as many of each color</option>
+            <option value="absolute" data-sv="Fasta gränser i öre">Fixed limits in öre</option>
           </select>
         </div>
         <div class="ctl" id="minspanBox">
-          <div class="lab"><label for="minspan">Minimum span</label><output id="minspanOut"></output></div>
+          <div class="lab"><label for="minspan" data-sv="Minsta spann">Minimum span</label><output id="minspanOut"></output></div>
           <input id="minspan" type="range" min="5" max="300" step="5" value="50">
-          <p class="help">The cheapest is always green. If the most expensive is less than this much dearer, it never turns fully red.</p>
+          <p class="help" data-sv="Det billigaste är alltid grönt. Om det dyraste är mindre än så här mycket dyrare blir det aldrig helt rött.">The cheapest is always green. If the most expensive is less than this much dearer, it never turns fully red.</p>
         </div>
         <div id="absBox" class="two hidden">
-          <div class="ctl"><div class="lab"><label for="absLo">Green below (öre)</label></div><input id="absLo" type="number" step="5" value="30"></div>
-          <div class="ctl"><div class="lab"><label for="absHi">Red above (öre)</label></div><input id="absHi" type="number" step="5" value="200"></div>
+          <div class="ctl"><div class="lab"><label for="absLo" data-sv="Grönt under (öre)">Green below (öre)</label></div><input id="absLo" type="number" step="5" value="30"></div>
+          <div class="ctl"><div class="lab"><label for="absHi" data-sv="Rött över (öre)">Red above (öre)</label></div><input id="absHi" type="number" step="5" value="200"></div>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="basis">Cheapest and most expensive of</label></div>
+          <div class="lab"><label for="basis" data-sv="Billigast och dyrast av">Cheapest and most expensive of</label></div>
           <select id="basis">
-            <option value="window">The whole period shown (the lamp)</option>
-            <option value="remaining">Only the time that is left</option>
+            <option value="window" data-sv="Hela perioden som visas (lampan)">The whole period shown (the lamp)</option>
+            <option value="remaining" data-sv="Bara tiden som är kvar">Only the time that is left</option>
           </select>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="win">The strip shows</label></div>
+          <div class="lab"><label for="win" data-sv="Slingan visar">The strip shows</label></div>
           <select id="win">
-            <option value="orig">Midnight to midnight (the lamp)</option>
-            <option value="rolling">From now to the last known price</option>
+            <option value="orig" data-sv="Midnatt till midnatt (lampan)">Midnight to midnight (the lamp)</option>
+            <option value="rolling" data-sv="Från nu till sista kända priset">From now to the last known price</option>
           </select>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="agg">An LED covering several quarters shows</label></div>
+          <div class="lab"><label for="agg" data-sv="En lysdiod som täcker flera kvartar visar">An LED covering several quarters shows</label></div>
           <select id="agg">
-            <option value="mean">Their average (the lamp)</option>
-            <option value="max">The most expensive one</option>
-            <option value="min">The cheapest one</option>
+            <option value="mean" data-sv="Snittpriset (lampan)">Their average (the lamp)</option>
+            <option value="max" data-sv="Den dyraste">The most expensive one</option>
+            <option value="min" data-sv="Den billigaste">The cheapest one</option>
           </select>
         </div>
         <div class="ctl">
-          <div class="lab"><label for="gamma">Curve</label><output id="gammaOut"></output></div>
+          <div class="lab"><label for="gamma" data-sv="Kurva">Curve</label><output id="gammaOut"></output></div>
           <input id="gamma" type="range" min="0.3" max="3" step="0.1" value="1">
-          <p class="help">1 is even. Above 1, more of the day is green and only the peaks are red.</p>
+          <p class="help" data-sv="1 ger en jämn skala. Över 1 blir mer av dygnet grönt och bara topparna röda.">1 is even. Above 1, more of the day is green and only the peaks are red.</p>
         </div>
         <div class="two">
           <div class="ctl">
-            <div class="lab"><label for="steps">Color steps</label></div>
+            <div class="lab"><label for="steps" data-sv="Färgsteg">Color steps</label></div>
             <select id="steps">
-              <option value="0">Smooth (the lamp)</option>
+              <option value="0" data-sv="Steglös (lampan)">Smooth (the lamp)</option>
               <option value="3">3</option>
               <option value="4">4</option>
               <option value="5">5</option>
             </select>
           </div>
           <div class="ctl">
-            <div class="lab"><label for="palette">Colors</label></div>
+            <div class="lab"><label for="palette" data-sv="Färger">Colors</label></div>
             <select id="palette">
-              <option value="orig">Green, yellow, red (the lamp)</option>
-              <option value="gyr">Pure green, yellow, red</option>
-              <option value="bluered">Blue to red</option>
+              <option value="orig" data-sv="Grönt, gult, rött (lampan)">Green, yellow, red (the lamp)</option>
+              <option value="gyr" data-sv="Rent grönt, gult, rött">Pure green, yellow, red</option>
+              <option value="bluered" data-sv="Blått till rött">Blue to red</option>
             </select>
           </div>
         </div>
-        <div class="btnrow"><button id="resetVar" type="button">Back to the lamp's scale</button></div>
+        <div class="btnrow"><button id="resetVar" type="button" data-sv="Tillbaka till lampans skala">Back to the lamp's scale</button></div>
       </div>
 
       <div>
-        <h3>Your own prices</h3>
-        <p class="help" style="margin-bottom:12px">For another date or to check the lamp against the source. Open the address in a new tab, select everything, copy it and paste it here. The day after can be left empty.</p>
+        <h3 data-sv="Egna priser">Your own prices</h3>
+        <p class="help" style="margin-bottom:12px" data-sv="För ett annat datum, eller för att jämföra lampan med källan. Öppna adressen i en ny flik, markera allt, kopiera och klistra in här. Dagen efter kan lämnas tom.">For another date or to check the lamp against the source. Open the address in a new tab, select everything, copy it and paste it here. The day after can be left empty.</p>
         <div class="two">
-          <div class="ctl"><div class="lab"><label for="pDate">Date</label></div><input id="pDate" type="date"></div>
-          <div class="ctl"><div class="lab"><label for="pArea">Price area</label></div>
+          <div class="ctl"><div class="lab"><label for="pDate" data-sv="Datum">Date</label></div><input id="pDate" type="date"></div>
+          <div class="ctl"><div class="lab"><label for="pArea" data-sv="Elområde">Price area</label></div>
             <select id="pArea"><option>SE1</option><option>SE2</option><option selected>SE3</option><option>SE4</option></select></div>
         </div>
-        <p class="url">That day: <a id="urlToday" target="_blank" rel="noopener"></a></p>
-        <p class="url">The day after: <a id="urlTomorrow" target="_blank" rel="noopener"></a></p>
-        <div class="ctl"><div class="lab"><label for="jsonToday">Prices for that day</label></div><textarea id="jsonToday" placeholder='[{"SEK_per_kWh":0.53,"time_start":"…T00:00:00+01:00", …}]'></textarea></div>
-        <div class="ctl"><div class="lab"><label for="jsonTomorrow">Prices for the day after (optional)</label></div><textarea id="jsonTomorrow"></textarea></div>
-        <div class="btnrow"><button id="usePasted" type="button" class="primary">Use these prices</button></div>
+        <p class="url"><span data-sv="Den dagen:">That day:</span> <a id="urlToday" target="_blank" rel="noopener"></a></p>
+        <p class="url"><span data-sv="Dagen efter:">The day after:</span> <a id="urlTomorrow" target="_blank" rel="noopener"></a></p>
+        <div class="ctl"><div class="lab"><label for="jsonToday" data-sv="Priser för den dagen">Prices for that day</label></div><textarea id="jsonToday" placeholder='[{"SEK_per_kWh":0.53,"time_start":"…T00:00:00+01:00", …}]'></textarea></div>
+        <div class="ctl"><div class="lab"><label for="jsonTomorrow" data-sv="Priser för dagen efter (valfritt)">Prices for the day after (optional)</label></div><textarea id="jsonTomorrow"></textarea></div>
+        <div class="btnrow"><button id="usePasted" data-sv="Använd de här priserna" type="button" class="primary">Use these prices</button></div>
         <p class="msg" id="pasteMsg"></p>
       </div>
     </div>
   </details>
 
   <footer>
-    <p>Elpriser tillhandahålls av <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>. The real prices are fetched from there every hour. They are spot prices excluding VAT, grid fees and tax, so your electricity bill is higher.</p>
-    <p>The emulator and the <i>Compared with a normal price</i> color mode were designed by <a href="https://github.com/sealjo">@sealjo</a>. The example days are made up but have a realistic shape. The emulator always counts 96 quarters per day; on the two days a year when the clocks change, the lamp handles the 23- or 25-hour day correctly but the emulator doesn't.</p>
+    <p data-sv="Elpriser tillhandahålls av <a href='https://www.elprisetjustnu.se'>Elpriset just nu.se</a>. De riktiga priserna hämtas därifrån varje timme. Det är spotpriser exklusive moms, nätavgift och skatt, så din elräkning blir högre.">Elpriser tillhandahålls av <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>. The real prices are fetched from there every hour. They are spot prices excluding VAT, grid fees and tax, so your electricity bill is higher.</p>
+    <p data-sv="Emulatorn och färgläget <i>Jämfört med ett normalpris</i> är designade av <a href='https://github.com/sealjo'>@sealjo</a>. Exempeldagarna är påhittade men har en realistisk form. Emulatorn räknar alltid med 96 kvartar per dygn. De två dagar om året då klockan ställs om hanterar lampan dygn på 23 eller 25 timmar rätt, men inte emulatorn.">The emulator and the <i>Compared with a normal price</i> color mode were designed by <a href="https://github.com/sealjo">@sealjo</a>. The example days are made up but have a realistic shape. The emulator always counts 96 quarters per day; on the two days a year when the clocks change, the lamp handles the 23- or 25-hour day correctly but the emulator doesn't.</p>
   </footer>
 </main>
 <div id="tip"></div>
 
+<script src="../i18n.js"></script>
 <script>
 "use strict";
 // Keep this in step with the lamp: the logic mirrors elpris_led/elpris_logic.h and rebuildTimeline() in the sketch.
@@ -511,10 +514,19 @@ function showRealInfo() {
   if (!realPrices) { info.textContent = ""; return; }
   const area = realPrices.areas[$("realArea").value] || {};
   const updated = new Date(realPrices.updated);
-  const time = isNaN(updated) ? "" : "Fetched " + updated.toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) + ". ";
+  const time = isNaN(updated) ? "" : T("Fetched ", "Hämtade ") + updated.toLocaleString("sv-SE", { dateStyle: "short", timeStyle: "short" }) + ". ";
   info.textContent = time + (area[localDate(1)]
-    ? "Tomorrow's prices are published."
-    : "Tomorrow's prices are not published yet; they usually come after 13:00.");
+    ? T("Tomorrow's prices are published.", "Morgondagens priser är publicerade.")
+    : T("Tomorrow's prices are not published yet; they usually come after 13:00.", "Morgondagens priser är inte publicerade än. De brukar komma efter 13:00."));
+}
+// The real-prices choice in the list: loading, available or not available
+let realState = "loading";
+function showRealOption() {
+  $("scenario").querySelector('option[value="real"]').textContent = {
+    loading: T("Real prices (loading…)", "Riktiga priser (laddar…)"),
+    ok: T("Real prices, today and tomorrow", "Riktiga priser, idag och imorgon"),
+    na: T("Real prices (not available right now)", "Riktiga priser (inte tillgängliga just nu)")
+  }[realState];
 }
 function loadRealPrices() {
   const opt = $("scenario").querySelector('option[value="real"]');
@@ -523,7 +535,7 @@ function loadRealPrices() {
     .then(json => {
       realPrices = json;
       opt.disabled = false;
-      opt.textContent = "Real prices, today and tomorrow";
+      realState = "ok"; showRealOption();
       if (useRealPrices()) {
         // Real prices are the most useful start: show today as it is, at the real time
         $("scenario").value = "real";
@@ -531,7 +543,7 @@ function loadRealPrices() {
       }
       regen(); readS();
     })
-    .catch(() => { opt.textContent = "Real prices (not available right now)"; });
+    .catch(() => { realState = "na"; showRealOption(); });
 }
 
 function regen() {
@@ -579,34 +591,41 @@ function readS() {
   $("variantBlock").classList.toggle("hidden", !S.showVar);
   $("normalSettings").classList.toggle("hidden", !normal);
   $("colorModeHelp").textContent = normal
-    ? "Green when cheaper than usual, yellow when it doesn't matter, red when more expensive. The last three LEDs: one off, then tomorrow 08–17 and 17–24 compared with today."
-    : "Today, and tomorrow once published, from green (the cheapest time) to red (the most expensive) within that period.";
+    ? T("Green when cheaper than usual, yellow when it doesn't matter, red when more expensive. The last three LEDs: one off, then tomorrow 08–17 and 17–24 compared with today.",
+        "Grönt när det är billigare än vanligt, gult när det inte spelar någon roll, rött när det är dyrare. De tre sista lysdioderna: en släckt, sedan imorgon 08–17 och 17–24 jämfört med idag.")
+    : T("Today, and tomorrow once published, from green (the cheapest time) to red (the most expensive) within that period.",
+        "Idag, och imorgon när priserna är publicerade, från grönt (billigast) till rött (dyrast) inom den perioden.");
 
-  $("histDaysOut").textContent = S.P.histDays + (S.P.histDays === 1 ? " day" : " days");
+  $("histDaysOut").textContent = S.P.histDays + (S.P.histDays === 1 ? T(" day", " dag") : T(" days", " dagar"));
   $("histHelp").textContent = !hist.length
-    ? "Your own prices have no past days, so the normal price is based on today and tomorrow only."
-    : "The normal price is the average of these days, today and, if ticked below, tomorrow." +
-      (real && hist.length < S.P.histDays ? " Only " + hist.length + " past days are available here." : "");
+    ? T("Your own prices have no past days, so the normal price is based on today and tomorrow only.",
+        "Dina egna priser har inga föregående dagar, så normalpriset bygger bara på idag och imorgon.")
+    : T("The normal price is the average of these days, today and, if ticked below, tomorrow.",
+        "Normalpriset är snittet av de här dagarna, idag och, om det är ikryssat nedan, imorgon.") +
+      (real && hist.length < S.P.histDays ? T(" Only " + hist.length + " past days are available here.", " Bara " + hist.length + " föregående dagar finns här.") : "");
   $("deadOut").textContent = "±" + $("dead").value + " öre";
   $("extremeOut").textContent = "±" + $("extreme").value + " öre";
   const sw = (lv, txt) => { const [r, g, b] = propBase(lv, S.P.levels); return `<span class="dot"><i style="background:rgb(${r},${g},${b})"></i>${txt}</span>`; };
   const keyHtml = S.P.levels === 5
-    ? sw(-2, "much cheaper") + sw(-1, "cheaper") + sw(0, "doesn't matter") + sw(1, "more expensive") + sw(2, "much more expensive")
-    : sw(-1, "cheaper") + sw(0, "doesn't matter") + sw(1, "more expensive");
+    ? sw(-2, T("much cheaper", "mycket billigare")) + sw(-1, T("cheaper", "billigare")) + sw(0, T("doesn't matter", "spelar ingen roll")) +
+      sw(1, T("more expensive", "dyrare")) + sw(2, T("much more expensive", "mycket dyrare"))
+    : sw(-1, T("cheaper", "billigare")) + sw(0, T("doesn't matter", "spelar ingen roll")) + sw(1, T("more expensive", "dyrare"));
   if ($("propKey").innerHTML !== keyHtml) $("propKey").innerHTML = keyHtml;
   $("ledsOut").textContent = S.N;
   $("pastOut").textContent = S.pastPct + " %";
   $("bdayOut").textContent = S.bday;
   $("bnightOut").textContent = S.bnight;
   $("minspanOut").textContent = $("minspan").value + " öre";
-  $("gammaOut").textContent = S.V.gamma.toFixed(1);
+  $("gammaOut").textContent = dec(S.V.gamma, 1);
   $("brightBox").classList.toggle("hidden", !S.applyBright);
   $("minspanBox").classList.toggle("hidden", S.V.scale !== "minspan");
   $("absBox").classList.toggle("hidden", S.V.scale !== "absolute");
   $("time").disabled = S.live;
   $("timeHelp").textContent = S.live
-    ? "Following the real time. Untick Use the real time to drag the clock or press Play."
-    : "Drag to see the strip at another time, or press Play to watch a day go by.";
+    ? T("Following the real time. Untick Use the real time to drag the clock or press Play.",
+        "Följer den riktiga tiden. Kryssa ur Följ den riktiga tiden för att dra i klockan eller trycka på Spela.")
+    : T("Drag to see the strip at another time, or press Play to watch a day go by.",
+        "Dra för att se slingan vid en annan tid, eller tryck på Spela för att se ett dygn gå.");
   $("varDesc").textContent = describe(S.V);
   $("blinkMsOut").textContent = $("blinkMs").value + " ms";
   buildBoardPattern();
@@ -614,13 +633,14 @@ function readS() {
 const ORIGINAL = { scale: "relative", basis: "window", win: "orig", agg: "mean", gamma: 1, steps: 0, palette: "orig", minspan: 0.5, absLo: 0.3, absHi: 2 };
 function describe(V) {
   const p = [];
-  p.push({ relative: "the lamp's scale", minspan: "minimum span " + Math.round(V.minspan * 100) + " öre", rank: "ranking", absolute: "fixed " + Math.round(V.absLo * 100) + "–" + Math.round(V.absHi * 100) + " öre" }[V.scale]);
-  if (V.basis === "remaining") p.push("only the time that is left");
-  if (V.win === "rolling") p.push("from now on");
-  if (V.agg !== "mean") p.push(V.agg === "max" ? "most expensive quarter per LED" : "cheapest quarter per LED");
-  if (V.gamma !== 1) p.push("curve " + V.gamma.toFixed(1));
-  if (V.steps) p.push(V.steps + " steps");
-  if (V.palette !== "orig") p.push(V.palette === "gyr" ? "pure green, yellow, red" : "blue to red");
+  p.push({ relative: T("the lamp's scale", "lampans skala"), minspan: T("minimum span ", "minsta spann ") + Math.round(V.minspan * 100) + " öre",
+           rank: T("ranking", "rangordning"), absolute: T("fixed ", "fast ") + Math.round(V.absLo * 100) + "–" + Math.round(V.absHi * 100) + " öre" }[V.scale]);
+  if (V.basis === "remaining") p.push(T("only the time that is left", "bara tiden som är kvar"));
+  if (V.win === "rolling") p.push(T("from now on", "från nu"));
+  if (V.agg !== "mean") p.push(V.agg === "max" ? T("most expensive quarter per LED", "dyraste kvarten per lysdiod") : T("cheapest quarter per LED", "billigaste kvarten per lysdiod"));
+  if (V.gamma !== 1) p.push(T("curve ", "kurva ") + dec(V.gamma, 1));
+  if (V.steps) p.push(V.steps + T(" steps", " steg"));
+  if (V.palette !== "orig") p.push(V.palette === "gyr" ? T("pure green, yellow, red", "rent grönt, gult, rött") : T("blue to red", "blått till rött"));
   return p.join(", ");
 }
 
@@ -675,7 +695,7 @@ function compute(V, all, cur, N) {
     prev = rgb;
   }
   let lgLo, lgHi;
-  if (V.scale === "rank") { lgLo = "cheapest"; lgHi = "most expensive"; }
+  if (V.scale === "rank") { lgLo = T("cheapest", "billigast"); lgHi = T("most expensive", "dyrast"); }
   else if (V.scale === "absolute") { lgLo = ore(V.absLo); lgHi = ore(V.absHi); }
   else if (V.scale === "minspan") { lgLo = ore(mn); lgHi = ore(mn + Math.max(mx - mn, V.minspan)); }
   else { lgLo = ore(mn); lgHi = ore(mx); }
@@ -685,10 +705,20 @@ const ledState = (s0, s1, cur) => cur >= s1 ? PAST : cur >= s0 ? NOW : FUTURE;
 
 /* ---------- Compared with a normal price ---------- */
 const clampLevel = lv => S.P.levels === 3 ? Math.max(-1, Math.min(1, lv)) : lv;
-const LEVEL_NAME = { "-2": "much cheaper than usual", "-1": "cheaper than usual", "0": "about as usual – it doesn't matter when you use power", "1": "more expensive than usual", "2": "much more expensive than usual" };
-const levelName = lv => LEVEL_NAME[clampLevel(lv)];
-const CMP_NAME = { "-2": "much cheaper than today", "-1": "cheaper than today", "0": "about the same as today", "1": "more expensive than today", "2": "much more expensive than today" };
-const cmpName = lv => CMP_NAME[clampLevel(lv)];
+const levelName = lv => ({
+  "-2": T("much cheaper than usual", "mycket billigare än vanligt"),
+  "-1": T("cheaper than usual", "billigare än vanligt"),
+  "0": T("about as usual – it doesn't matter when you use power", "ungefär som vanligt – det spelar ingen roll när du använder el"),
+  "1": T("more expensive than usual", "dyrare än vanligt"),
+  "2": T("much more expensive than usual", "mycket dyrare än vanligt")
+})[clampLevel(lv)];
+const cmpName = lv => ({
+  "-2": T("much cheaper than today", "mycket billigare än idag"),
+  "-1": T("cheaper than today", "billigare än idag"),
+  "0": T("about the same as today", "ungefär som idag"),
+  "1": T("more expensive than today", "dyrare än idag"),
+  "2": T("much more expensive than today", "mycket dyrare än idag")
+})[clampLevel(lv)];
 // Color per level, along the same color wheel as the other mode (levelHue() in elpris_logic.h)
 function propBase(level, levels) {
   if (levels === 3) return rainbow([96, 64, 0][Math.max(-1, Math.min(1, level)) + 1]);
@@ -716,7 +746,7 @@ function computeProposal(minute, tmr, N, P) {
     leds.push({ s0, s1, price, level: levelOf(price), tick });
   }
   // One off LED, then tomorrow daytime and tomorrow evening compared with the same hours today
-  leds.push({ s0: FAR, s1: FAR + 1, off: true, info: "Always off: separates today from tomorrow" });
+  leds.push({ s0: FAR, s1: FAR + 1, off: true, info: T("Always off: separates today from tomorrow", "Alltid släckt: skiljer idag från imorgon") });
   const periods = [];
   for (const [name, a, b] of [["daytime", 32, 68], ["evening", 68, 96]]) {
     const td = mean(days[0].slice(a, b));
@@ -725,12 +755,13 @@ function computeProposal(minute, tmr, N, P) {
     periods.push({ name, a, b, td, tm, level });
     const span = pad(a / 4) + "–" + pad(b / 4);
     const info = tmr
-      ? `Tomorrow ${span}: average ${ore(tm)}\nToday ${span}: average ${ore(td)}\n${signedOre(tm - td)}, ${cmpName(level)}`
-      : `Tomorrow ${span}\nOff until tomorrow's prices are shown`;
+      ? T(`Tomorrow ${span}: average ${ore(tm)}\nToday ${span}: average ${ore(td)}`, `Imorgon ${span}: snitt ${ore(tm)}\nIdag ${span}: snitt ${ore(td)}`) +
+        `\n${signedOre(tm - td)}, ${cmpName(level)}`
+      : T(`Tomorrow ${span}\nOff until tomorrow's prices are shown`, `Imorgon ${span}\nSläckt tills morgondagens priser visas`);
     leds.push({ s0: FAR, s1: FAR + 1, off: !tmr, cmp: true, level, info });
   }
   return {
-    kind: "prop", V: { scale: "prop" }, start: 0, len: L, frac: M / N, endLabel: "tomorrow 08–17 · 17–24",
+    kind: "prop", V: { scale: "prop" }, start: 0, len: L, frac: M / N, endLabel: T("tomorrow 08–17 · 17–24", "imorgon 08–17 · 17–24"),
     curRel: cur, leds, normal, hd, P, periods, colorOf: p => propBase(levelOf(p), P.levels)
   };
 }
@@ -746,10 +777,12 @@ const shadePlain = (led, t, night, curRel) => shade(led.rgb, ledState(led.s0, le
 const ore = p => Math.round(p * 100) + " öre";
 const signedOre = d => (d >= 0 ? "+" : "−") + Math.abs(Math.round(d * 100)) + " öre";
 const pad = n => String(n).padStart(2, "0");
+const dec = (x, d) => { const s = x.toFixed(d); return I18N.lang === "sv" ? s.replace(".", ",") : s; };   // 0.99 / 0,99
 function fmtMin(m, isEnd) {
   const d = Math.floor(m / 1440), r = m % 1440;
-  if (isEnd && r === 0 && d > 0) return "24:00" + (d > 1 ? " tomorrow" : "");
-  return pad(Math.floor(r / 60)) + ":" + pad(r % 60) + (d > 0 ? " tomorrow" : "");
+  const tmr = T(" tomorrow", " imorgon");
+  if (isEnd && r === 0 && d > 0) return "24:00" + (d > 1 ? tmr : "");
+  return pad(Math.floor(r / 60)) + ":" + pad(r % 60) + (d > 0 ? tmr : "");
 }
 function fitCanvas(c) {
   const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
@@ -790,7 +823,8 @@ function buildBoardPattern() {
     });
     off(unit * 20);                                             // before the address is shown again
   };
-  const describeIp = parts => parts.map(p => String(p).split("").map(d => d === "0" ? "1 long" : d + " short").join(", pause, ")).join(" — long pause — ");
+  const describeIp = parts => parts.map(p => String(p).split("").map(d => d === "0" ? T("1 long", "1 lång") : d + T(" short", " korta"))
+    .join(T(", pause, ", ", paus, "))).join(T(" — long pause — ", " — lång paus — "));
 
   const state = $("boardState").value;
   const parts = ipPartsToBlink();
@@ -798,27 +832,37 @@ function buildBoardPattern() {
   switch (state) {
     case "portal":
       blinkFast(10);
-      caption = "Fast blinking: connect to the wifi Elpris-LED-Config with your phone to set the lamp up.";
+      caption = T("Fast blinking: connect to the wifi Elpris-LED-Config with your phone to set the lamp up.",
+                  "Snabb blinkning: anslut till wifi-nätet Elpris-LED-Config med mobilen för att ställa in lampan.");
       break;
     case "ip":
-      if (parts) { ipSteps(parts); caption = `Blinks ${parts.join(" · ")}: ${describeIp(parts)}. Shown three times after connecting.`; }
-      else { off(1000); caption = "Type a valid address, like 172.16.1.90."; }
+      if (parts) {
+        ipSteps(parts);
+        caption = T(`Blinks ${parts.join(" · ")}: ${describeIp(parts)}. Shown three times after connecting.`,
+                    `Blinkar ${parts.join(" · ")}: ${describeIp(parts)}. Visas tre gånger efter anslutning.`);
+      }
+      else { off(1000); caption = T("Type a valid address, like 172.16.1.90.", "Skriv en giltig adress, till exempel 172.16.1.90."); }
       break;
     case "ok":
       okSteps();
-      caption = { slow: "Slow blinking: everything works.", heartbeat: "A short blink every 10 seconds: everything works, without disturbing.", off: "Off: everything works." }[$("okStyle").value];
+      caption = {
+        slow: T("Slow blinking: everything works.", "Långsam blinkning: allt fungerar."),
+        heartbeat: T("A short blink every 10 seconds: everything works, without disturbing.", "En kort blinkning var tionde sekund: allt fungerar, utan att störa."),
+        off: T("Off: everything works.", "Släckt: allt fungerar.")
+      }[$("okStyle").value];
       break;
     case "fetching":
       on(3000); off(500);
-      caption = "On while fetching prices, a few seconds.";
+      caption = T("On while fetching prices, a few seconds.", "Tänd medan priser hämtas, några sekunder.");
       break;
     case "failing":
       on(150); off(150); on(150); off(1500);
-      caption = "Double blinks: fetching prices fails. The lamp keeps trying; its web page shows why.";
+      caption = T("Double blinks: fetching prices fails. The lamp keeps trying; its web page shows why.",
+                  "Dubbelblinkningar: det går inte att hämta priser. Lampan fortsätter försöka, och dess webbsida visar varför.");
       break;
     case "updating":
       on(4000); off(200);
-      caption = "On while an update is installed, about a minute.";
+      caption = T("On while an update is installed, about a minute.", "Tänd medan en uppdatering installeras, ungefär en minut.");
       break;
     default:   // the whole startup, from power on to working normally
       blinkFast(15);
@@ -826,7 +870,9 @@ function buildBoardPattern() {
       if (parts) ipSteps(parts);
       on(2500); off(600);
       for (let i = 0; i < 2; i++) okSteps();
-      caption = "Starting up: fast blinking while connecting, then the address" + (parts ? ` (${parts.join(" · ")})` : "") + ", on while fetching prices, then working normally.";
+      caption = T("Starting up: fast blinking while connecting, then the address", "Start: snabb blinkning under anslutningen, sedan adressen") +
+        (parts ? ` (${parts.join(" · ")})` : "") +
+        T(", on while fetching prices, then working normally.", ", tänd medan priser hämtas, sedan som vanligt.");
   }
   boardPattern = { steps, total: steps.reduce((a, s) => a + s[1], 0) || 1, caption };
   $("boardCaption").textContent = caption;
@@ -862,8 +908,8 @@ function drawBoard(t) {
     ctx.fillStyle = "#8a93a3"; ctx.font = "10px 'IBM Plex Sans', sans-serif"; ctx.textAlign = "center"; ctx.fillText(label, x, by + bh / 2 + 16);
   };
   const ledX = bx + bw * 0.62;
-  led(ledX, "#ff3b30", true, "power");
-  led(ledX + 50, "#3d8bff", boardLedOn(t), "blue (GPIO2)");
+  led(ledX, "#ff3b30", true, T("power", "ström"));
+  led(ledX + 50, "#3d8bff", boardLedOn(t), T("blue (GPIO2)", "blå (GPIO2)"));
   ctx.fillStyle = "#8a93a3"; ctx.textAlign = "left"; ctx.font = "11px 'IBM Plex Sans', sans-serif";
   ctx.fillText("USB", bx + bw - 14, by - 10);
 }
@@ -905,7 +951,7 @@ function drawStrip(canvas, res, t, night, shadeFn) {
   ctx.font = "11px 'IBM Plex Mono', monospace"; ctx.fillStyle = "#8a93a3"; ctx.textBaseline = "top";
   const startTxt = fmtMin(res.start * 15), endTxt = res.endLabel || fmtMin((res.start + res.len) * 15, true);
   const leftTxt = S.reverse ? endTxt : startTxt, rightTxt = S.reverse ? startTxt : endTxt;
-  ctx.textAlign = "left"; ctx.fillText("cable · " + leftTxt, 2, top + sh + 6);
+  ctx.textAlign = "left"; ctx.fillText(T("cable · ", "kabel · ") + leftTxt, 2, top + sh + 6);
   ctx.textAlign = "right"; ctx.fillText(rightTxt, w - 2, top + sh + 6);
   ctx.textAlign = "center"; ctx.strokeStyle = "#4a5466"; ctx.lineWidth = 1;
   for (let k = 1; k < res.len; k++) {
@@ -961,12 +1007,15 @@ function drawChart(all, res, minute) {
     ctx.setLineDash([4, 4]); ctx.strokeStyle = "#c9ced6"; ctx.beginPath(); ctx.moveTo(padL, y(p)); ctx.lineTo(w - padR, y(p)); ctx.stroke(); ctx.setLineDash([]);
     ctx.textAlign = right ? "right" : "left"; ctx.fillStyle = "#c9ced6"; ctx.fillText(label, right ? w - padR - 4 : padL + 4, y(p) - 8);
   };
-  if (res.V.scale === "absolute") { dashed(res.V.absLo, "green below " + ore(res.V.absLo)); dashed(res.V.absHi, "red above " + ore(res.V.absHi)); }
-  if (res.V.scale === "minspan" && res.mx - res.mn < res.V.minspan) dashed(res.mn + res.V.minspan, "this is where it would have turned red");
+  if (res.V.scale === "absolute") {
+    dashed(res.V.absLo, T("green below ", "grönt under ") + ore(res.V.absLo));
+    dashed(res.V.absHi, T("red above ", "rött över ") + ore(res.V.absHi));
+  }
+  if (res.V.scale === "minspan" && res.mx - res.mn < res.V.minspan) dashed(res.mn + res.V.minspan, T("this is where it would have turned red", "här skulle det ha blivit rött"));
   if (res.kind === "prop") {
     const a = Math.min(hi, res.normal + res.P.dead), b = Math.max(lo, res.normal - res.P.dead);
     ctx.fillStyle = "rgba(230,220,90,0.10)"; ctx.fillRect(padL, y(a), cw, y(b) - y(a));
-    dashed(res.normal, "normal price " + ore(res.normal) + " (yellow band: doesn't matter)", true);
+    dashed(res.normal, T("normal price ", "normalpris ") + ore(res.normal) + T(" (yellow band: doesn't matter)", " (gult band: spelar ingen roll)"), true);
     ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2;
     for (const q of res.periods) {
       for (const [off, v] of [[0, q.td], [96, q.tm]]) {
@@ -974,7 +1023,7 @@ function drawChart(all, res, minute) {
         const yy = y(v), x0 = padL + (off + q.a) * bw, x1 = padL + (off + q.b) * bw;
         ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke();
         ctx.fillStyle = "#ffffff"; ctx.textAlign = "left"; ctx.textBaseline = "bottom";
-        ctx.fillText("average " + ore(v), x0 + 2, yy - 2);
+        ctx.fillText(T("average ", "snitt ") + ore(v), x0 + 2, yy - 2);
       }
     }
     ctx.lineWidth = 1;
@@ -982,12 +1031,12 @@ function drawChart(all, res, minute) {
   ctx.textBaseline = "top"; ctx.textAlign = "center"; ctx.fillStyle = "#8a93a3";
   for (let s = 0; s <= L; s += 24) {
     const x = padL + s * bw, hh = (s / 4) % 24;
-    ctx.fillText(s === 96 && L > 96 ? "00 tomorrow" : pad(s === L ? 24 : hh), Math.min(Math.max(x, padL + 10), w - padR - 14), h - padB + 7);
+    ctx.fillText(s === 96 && L > 96 ? T("00 tomorrow", "00 imorgon") : pad(s === L ? 24 : hh), Math.min(Math.max(x, padL + 10), w - padR - 14), h - padB + 7);
   }
   if (L > 96) { ctx.strokeStyle = "#5a6577"; ctx.beginPath(); ctx.moveTo(padL + 96 * bw + 0.5, padT); ctx.lineTo(padL + 96 * bw + 0.5, padT + ch); ctx.stroke(); }
   const nx = padL + (minute / 15) * bw;
   ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(nx, padT - 4); ctx.lineTo(nx, padT + ch); ctx.stroke();
-  ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText("now", nx, padT + 1);
+  ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "bottom"; ctx.fillText(T("now", "nu"), nx, padT + 1);
   chartGeom = { padL, bw, L };
 }
 
@@ -997,24 +1046,27 @@ function summary(st) {
   const lines = [];
   if (S.mode === "normal") {
     const lv = st.prop.leds.find(l => !l.off && !l.cmp && ledState(l.s0, l.s1, st.prop.curRel) === NOW);
-    lines.push(`<div class="now">Now, ${fmtMin(st.minute)}: ${ore(p)}/kWh – ${lv ? levelName(lv.level) : ""}</div>`);
-    lines.push(`<div class="sub">Normal price ${ore(st.prop.normal)}, the average of ${st.prop.hd ? st.prop.hd + (st.prop.hd === 1 ? " past day, " : " past days, ") : ""}today${st.tmr && S.P.normTomorrow ? " and tomorrow" : ""}.</div>`);
+    lines.push(`<div class="now">${T("Now", "Nu")}, ${fmtMin(st.minute)}: ${ore(p)}/kWh – ${lv ? levelName(lv.level) : ""}</div>`);
+    const pastDays = st.prop.hd ? st.prop.hd + (st.prop.hd === 1 ? T(" past day, ", " föregående dag, ") : T(" past days, ", " föregående dagar, ")) : "";
+    lines.push(`<div class="sub">${T("Normal price", "Normalpris")} ${ore(st.prop.normal)}, ${T("the average of", "snittet av")} ${pastDays}${T("today", "idag")}` +
+               `${st.tmr && S.P.normTomorrow ? T(" and tomorrow", " och imorgon") : ""}.</div>`);
   } else {
-    lines.push(`<div class="now">Now, ${fmtMin(st.minute)}: ${ore(p)}/kWh</div>`);
+    lines.push(`<div class="now">${T("Now", "Nu")}, ${fmtMin(st.minute)}: ${ore(p)}/kWh</div>`);
   }
   // The cheapest quarter left in what the strip shows
   let best = -1;
   for (let s = st.cur; s < st.all.length; s++) if (best < 0 || st.all[s] < st.all[best]) best = s;
-  if (best >= 0) lines.push(`<div>Cheapest time left: ${fmtMin(best * 15)}, ${ore(st.all[best])}/kWh.</div>`);
+  if (best >= 0) lines.push(`<div>${T("Cheapest time left", "Billigaste kvarten framöver")}: ${fmtMin(best * 15)}, ${ore(st.all[best])}/kWh.</div>`);
   if (st.tmr) {
     if (S.mode === "normal") {
       const [d, e] = st.prop.periods;
-      lines.push(`<div>Tomorrow 08–17: ${cmpName(d.level)} (${signedOre(d.tm - d.td)}). Tomorrow 17–24: ${cmpName(e.level)} (${signedOre(e.tm - e.td)}).</div>`);
+      const tm = T("Tomorrow", "Imorgon");
+      lines.push(`<div>${tm} 08–17: ${cmpName(d.level)} (${signedOre(d.tm - d.td)}). ${tm} 17–24: ${cmpName(e.level)} (${signedOre(e.tm - e.td)}).</div>`);
     }
   } else if (days[1] && S.tomorrow === "auto") {
-    lines.push(`<div class="sub">Tomorrow's prices are published. The lamp shows them from 13:00.</div>`);
+    lines.push(`<div class="sub">${T("Tomorrow's prices are published. The lamp shows them from 13:00.", "Morgondagens priser är publicerade. Lampan visar dem från 13:00.")}</div>`);
   } else if (!days[1]) {
-    lines.push(`<div class="sub">Tomorrow's prices are not published yet; they usually come after 13:00.</div>`);
+    lines.push(`<div class="sub">${T("Tomorrow's prices are not published yet; they usually come after 13:00.", "Morgondagens priser är inte publicerade än. De brukar komma efter 13:00.")}</div>`);
   }
   return lines.join("");
 }
@@ -1037,10 +1089,10 @@ function techReadout(st) {
   const phys = S.reverse ? S.N - 1 - nowLed : nowLed;
   const dayLeds = S.mode === "normal" ? Math.max(1, S.N - 3) : S.N;
   const tiles = [
-    ["LED for now, counted from the cable", "no. " + (phys + 1) + " of " + S.N],
-    ["Quarters per LED", (res.len / dayLeds).toFixed(2)],
-    ["Period on the strip", res.len > 96 ? "today and tomorrow" : "today"],
-    ["Cheapest – most expensive", ore(st.orig.mn) + " – " + ore(st.orig.mx)]
+    [T("LED for now, counted from the cable", "Lysdioden för nu, räknat från kabeln"), T("no. ", "nr ") + (phys + 1) + T(" of ", " av ") + S.N],
+    [T("Quarters per LED", "Kvartar per lysdiod"), dec(res.len / dayLeds, 2)],
+    [T("Period on the strip", "Period på slingan"), res.len > 96 ? T("today and tomorrow", "idag och imorgon") : T("today", "idag")],
+    [T("Cheapest – most expensive", "Billigast – dyrast"), ore(st.orig.mn) + " – " + ore(st.orig.mx)]
   ];
   const html = tiles.map(([k, v]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
   if (html !== last.tech) { $("techReadout").innerHTML = html; last.tech = html; }
@@ -1060,7 +1112,7 @@ function frame(t) {
   if (S.mode === "normal" || S.compare) drawStrip($("stripProp"), st.prop, t, night, shadeProp);
   if (S.mode === "range" || S.compare) drawStrip($("stripOrig"), st.orig, t, night, shadePlain);
   if (S.showVar) drawStrip($("stripVar"), st.vari, t, night, shadePlain);
-  const key = JSON.stringify([S.V, st.cur, st.all.length, S.N, seed, $("scenario").value, $("realArea").value]);
+  const key = JSON.stringify([S.V, st.cur, st.all.length, S.N, seed, $("scenario").value, $("realArea").value, I18N.lang]);
   if (key !== last.legend) {
     drawLegend($("lgOrig"), st.orig); drawLegend($("lgVar"), st.vari);
     $("lgOrigLo").textContent = st.orig.lgLo; $("lgOrigHi").textContent = st.orig.lgHi;
@@ -1092,17 +1144,18 @@ function stripText(canvas, which, e) {
   const res = st[which], N = res.leds.length, rect = canvas.getBoundingClientRect();
   const j = Math.min(N - 1, Math.max(0, Math.floor((e.clientX - rect.left) / rect.width * N)));
   const i = S.reverse ? N - 1 - j : j, led = res.leds[i];
-  if (led.info) return `LED ${j + 1} from the cable\n` + led.info;
+  const fromCable = T(`LED ${j + 1} from the cable`, `Lysdiod ${j + 1} från kabeln`);
+  if (led.info) return fromCable + "\n" + led.info;
   const a = (res.start + led.s0) * 15, b = (res.start + led.s1) * 15;
-  const extra = led.tick ? "\nclock time marker" : (led.level != null ? "\n" + levelName(led.level) : "");
-  return `LED ${j + 1} from the cable\n${fmtMin(a)} – ${fmtMin(b, true)}\n${led.price == null ? "no price yet" : "average " + ore(led.price) + "/kWh"}${extra}`;
+  const extra = led.tick ? T("\nclock time marker", "\nmarkering för klockslag") : (led.level != null ? "\n" + levelName(led.level) : "");
+  return `${fromCable}\n${fmtMin(a)} – ${fmtMin(b, true)}\n${led.price == null ? T("no price yet", "inget pris än") : T("average ", "snitt ") + ore(led.price) + "/kWh"}${extra}`;
 }
 function chartText(e) {
   const st = last.st; if (!st || !chartGeom) return null;
   const rect = $("chart").getBoundingClientRect();
   const s = Math.floor((e.clientX - rect.left - chartGeom.padL) / chartGeom.bw);
   if (s < 0 || s >= chartGeom.L) return null;
-  return `${fmtMin(s * 15)} – ${fmtMin((s + 1) * 15, true)}\n${ore(st.all[s])}/kWh (${st.all[s].toFixed(3)} SEK/kWh)`;
+  return `${fmtMin(s * 15)} – ${fmtMin((s + 1) * 15, true)}\n${ore(st.all[s])}/kWh (${dec(st.all[s], 3)} SEK/kWh)`;
 }
 function hover(el, textFn) {
   el.addEventListener("mousemove", e => { const t = textFn(e); if (t) showTip(e, t, false); else hideTip(); });
@@ -1117,7 +1170,7 @@ hover($("chart"), chartText);
 /* ---------- Your own prices ---------- */
 function parseDay(text) {
   const arr = JSON.parse(text);
-  if (!Array.isArray(arr) || !arr.length) throw new Error("What was pasted is not a list of prices.");
+  if (!Array.isArray(arr) || !arr.length) throw new Error(T("What was pasted is not a list of prices.", "Det som klistrades in är inte en lista med priser."));
   const out = new Array(SLOTS).fill(null);
   for (const e of arr) {
     const m = /T(\d\d):(\d\d)/.exec(e.time_start || "");
@@ -1129,7 +1182,7 @@ function parseDay(text) {
     for (let k = 0; k < dur && s + k < SLOTS; k++) out[s + k] = e.SEK_per_kWh;
   }
   const first = out.find(v => v !== null);
-  if (first === undefined) throw new Error("Found no prices (SEK_per_kWh and time_start) in it.");
+  if (first === undefined) throw new Error(T("Found no prices (SEK_per_kWh and time_start) in it.", "Hittade inga priser (SEK_per_kWh och time_start) i det."));
   let prev = first;
   for (let i = 0; i < SLOTS; i++) { if (out[i] === null) out[i] = prev; prev = out[i]; }
   return out;
@@ -1149,9 +1202,13 @@ $("usePasted").addEventListener("click", () => {
     pasted = [a, b];
     const opt = $("scenario").querySelector('option[value="pasted"]'); opt.disabled = false;
     $("scenario").value = "pasted"; regen(); readS();
-    msg.className = "msg ok"; msg.textContent = "Your prices are shown now" + (b ? ", for both days." : ". The day after is missing.");
+    msg.className = "msg ok";
+    msg.textContent = T("Your prices are shown now", "Dina priser visas nu") +
+      (b ? T(", for both days.", ", för båda dagarna.") : T(". The day after is missing.", ". Dagen efter saknas."));
   } catch (err) {
-    msg.className = "msg err"; msg.textContent = "Could not read the prices: " + err.message + " Copy the whole page, from [ to ].";
+    msg.className = "msg err";
+    msg.textContent = T("Could not read the prices: ", "Kunde inte läsa priserna: ") + err.message +
+      T(" Copy the whole page, from [ to ].", " Kopiera hela sidan, från [ till ].");
   }
 });
 
@@ -1161,11 +1218,19 @@ $("scenario").addEventListener("change", () => { regen(); readS(); });
 $("realArea").addEventListener("change", () => { regen(); readS(); });
 $("reseed").addEventListener("click", () => { seed++; regen(); readS(); });
 $("play").addEventListener("click", () => {
-  playing = !playing; $("play").textContent = playing ? "Pause" : "Play";
+  playing = !playing; showPlay();
   if (playing && $("live").checked) { $("live").checked = false; readS(); }
 });
 $("time").addEventListener("input", () => { S.minute = +$("time").value; });
-$("live").addEventListener("change", () => { if ($("live").checked && playing) { playing = false; $("play").textContent = "Play"; } });
+$("live").addEventListener("change", () => { if ($("live").checked && playing) { playing = false; showPlay(); } });
+const showPlay = () => { $("play").textContent = playing ? T("Pause", "Paus") : T("Play", "Spela"); };
+$("langBtn").addEventListener("click", I18N.toggle);
+// After a language change: the texts made by the script are made again in the new language
+I18N.onChange(() => {
+  document.title = T("Elpris-LED emulator", "Elpris-LED-emulator");
+  showPlay(); showRealOption(); updateUrls(); readS();
+  last = {};
+});
 $("resetVar").addEventListener("click", () => {
   $("scale").value = "relative"; $("basis").value = "window"; $("win").value = "orig"; $("agg").value = "mean";
   $("gamma").value = 1; $("steps").value = 0; $("palette").value = "orig"; readS();
@@ -1176,6 +1241,7 @@ $("pArea").addEventListener("input", updateUrls);
 (function init() {
   const d = new Date();
   $("pDate").value = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  I18N.apply(I18N.pick());
   updateUrls(); regen(); readS();
   loadRealPrices();
   requestAnimationFrame(t => { lastT = t; frame(t); });

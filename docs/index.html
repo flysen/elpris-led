@@ -80,48 +80,51 @@
   ol, ul { padding-left: 1.3rem; margin: 0 0 1rem; }
   li { margin-bottom: .6rem; }
   a { color: inherit; text-underline-offset: .2em; }
+  .lang { float: right; font: inherit; font-size: .95rem; background: none; color: var(--muted); border: 1px solid var(--line); border-radius: .4rem; padding: .3rem .7rem; cursor: pointer; }
   footer { margin-top: 3rem; color: var(--muted); font-size: .95rem; }
 </style>
 </head>
 <body>
 <main>
+  <button id="langBtn" class="lang" type="button" lang="sv">Svenska</button>
   <h1>Elpris-LED</h1>
-  <p class="lead">An LED strip that shows the day's electricity prices in color. Green when it's a good time to use power, yellow when it doesn't matter, red when it's expensive.</p>
+  <p class="lead" data-sv="En LED-slinga som visar dygnets elpriser i färg. Grönt när det är ett bra tillfälle att använda el, gult när det inte spelar någon roll, rött när det är dyrt.">An LED strip that shows the day's electricity prices in color. Green when it's a good time to use power, yellow when it doesn't matter, red when it's expensive.</p>
 
-  <div class="strip" id="strip" role="img" aria-label="Example of the strip: today compared with a normal price, yellow at night and midday, red at the morning and evening peaks. Passed hours are dimmed and the current time pulses white. The last two LEDs compare tomorrow with today."></div>
-  <div class="hours" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span>24 · tomorrow</span></div>
-  <p class="caption">An example day, compared with a normal price. Passed hours are dimmed and the LED pulsing white is right now. The last two LEDs show whether tomorrow daytime and evening will be cheaper (green) or more expensive (red) than today. Try it yourself in the <a href="emulator/">emulator</a>.</p>
+  <div class="strip" id="strip" role="img" aria-label= data-sv-aria="Exempel på slingan: idag jämfört med ett normalpris, gult på natten och mitt på dagen, rött vid morgon- och kvällstopparna. Passerade timmar är dämpade och den aktuella tiden pulserar vitt. De två sista lysdioderna jämför imorgon med idag.""Example of the strip: today compared with a normal price, yellow at night and midday, red at the morning and evening peaks. Passed hours are dimmed and the current time pulses white. The last two LEDs compare tomorrow with today."></div>
+  <div class="hours" aria-hidden="true"><span>00</span><span>06</span><span>12</span><span>18</span><span data-sv="24 · imorgon">24 · tomorrow</span></div>
+  <p class="caption" data-sv="En exempeldag, jämfört med ett normalpris. Passerade timmar är dämpade och lysdioden som pulserar vitt är just nu. De två sista lysdioderna visar om imorgon dagtid och kväll blir billigare (grönt) eller dyrare (rött) än idag. Prova själv i <a href='emulator/'>emulatorn</a>.">An example day, compared with a normal price. Passed hours are dimmed and the LED pulsing white is right now. The last two LEDs show whether tomorrow daytime and evening will be cheaper (green) or more expensive (red) than today. Try it yourself in the <a href="emulator/">emulator</a>.</p>
 
   <section class="install">
-    <h2>Install</h2>
-    <p>Connect your board to the computer with a USB cable and click the button. Installing works in Chrome and Edge on a computer.</p>
-    <p class="small">Board: an <strong>ESP32</strong> with 4 MB flash, e.g. ESP32 DevKit / WROOM-32 (not C3, S2 or S3). Strip data on GPIO16 (D16 or RX2). ESP8266 boards are no longer supported; lamps on ESP8266 stay on v4.0.5.</p>
+    <h2 data-sv="Installera">Install</h2>
+    <p data-sv="Anslut kortet till datorn med en USB-kabel och klicka på knappen. Installationen fungerar i Chrome och Edge på en dator.">Connect your board to the computer with a USB cable and click the button. Installing works in Chrome and Edge on a computer.</p>
+    <p class="small" data-sv="Kort: en <strong>ESP32</strong> med 4 MB flash, till exempel ESP32 DevKit / WROOM-32 (inte C3, S2 eller S3). Slingans dataledning kopplas till GPIO16 (D16 eller RX2). ESP8266-kort stöds inte längre; lampor på ESP8266 stannar på v4.0.5.">Board: an <strong>ESP32</strong> with 4 MB flash, e.g. ESP32 DevKit / WROOM-32 (not C3, S2 or S3). Strip data on GPIO16 (D16 or RX2). ESP8266 boards are no longer supported; lamps on ESP8266 stay on v4.0.5.</p>
     <esp-web-install-button manifest="manifest.json">
-      <button slot="activate">Install on your board</button>
-      <span slot="unsupported" class="notice">This browser can't install over USB. Open the page in Chrome or Edge on a computer.</span>
-      <span slot="not-allowed" class="notice">Installing requires the page to be opened over https.</span>
+      <button slot="activate" data-sv="Installera på kortet">Install on your board</button>
+      <span slot="unsupported" class="notice" data-sv="Den här webbläsaren kan inte installera via USB. Öppna sidan i Chrome eller Edge på en dator.">This browser can't install over USB. Open the page in Chrome or Edge on a computer.</span>
+      <span slot="not-allowed" class="notice" data-sv="Installationen kräver att sidan öppnas via https.">Installing requires the page to be opened over https.</span>
     </esp-web-install-button>
-    <p class="small after-button">Choose to erase the device on the first install. Some ESP32 boards need a press on their EN/RST button afterwards before they start. When updating, wifi and settings are kept as long as you don't erase.</p>
-    <p class="small">No port to choose? Use a USB cable that carries data, not just power. On Windows and Mac the computer may need a driver for the board's USB chip, usually CP210x or CH340. On Linux, your user must be in the <code>dialout</code> group.</p>
+    <p class="small after-button" data-sv="Kryssa i <em>Erase device</em> (radera enheten) vid första installationen. Installationsrutan är på engelska. Vissa ESP32-kort behöver ett tryck på EN/RST-knappen efteråt innan de startar. Vid en uppdatering behålls wifi och inställningar så länge du inte raderar.">Choose to erase the device on the first install. Some ESP32 boards need a press on their EN/RST button afterwards before they start. When updating, wifi and settings are kept as long as you don't erase.</p>
+    <p class="small" data-sv="Ingen port att välja? Använd en USB-kabel som klarar data, inte bara ström. På Windows och Mac kan datorn behöva en drivrutin för kortets USB-krets, oftast CP210x eller CH340. På Linux måste din användare vara med i gruppen <code>dialout</code>.">No port to choose? Use a USB cable that carries data, not just power. On Windows and Mac the computer may need a driver for the board's USB chip, usually CP210x or CH340. On Linux, your user must be in the <code>dialout</code> group.</p>
   </section>
 
   <section>
-    <h2>After installing</h2>
+    <h2 data-sv="Efter installationen">After installing</h2>
     <ol>
-      <li>The strip pulses blue and the lamp starts its own wifi called <strong>Elpris-LED-Config</strong>. Connect to it with your phone.</li>
-      <li>If no page opens automatically, go to 192.168.4.1. Choose your wifi and fill in price area and number of LEDs.</li>
-      <li>The lamp joins your network, fetches the prices and starts showing colors.</li>
-      <li>Open <strong>http://elpris-led.local</strong> in a browser on the same network. If that doesn't work, look for <strong>elpris-led-xxxxxx</strong> in your router's device list and open its IP address. Set an OTA password and a config portal password there, and tick <em>Reverse direction</em> if time runs the wrong way.</li>
+      <li data-sv="Slingan pulserar blått och lampan startar ett eget wifi som heter <strong>Elpris-LED-Config</strong>. Anslut till det med mobilen.">The strip pulses blue and the lamp starts its own wifi called <strong>Elpris-LED-Config</strong>. Connect to it with your phone.</li>
+      <li data-sv="Om ingen sida öppnas automatiskt, gå till 192.168.4.1. Välj ditt wifi och fyll i elområde och antal lysdioder.">If no page opens automatically, go to 192.168.4.1. Choose your wifi and fill in price area and number of LEDs.</li>
+      <li data-sv="Lampan ansluter till ditt nätverk, hämtar priserna och börjar visa färger.">The lamp joins your network, fetches the prices and starts showing colors.</li>
+      <li data-sv="Öppna <strong>http://elpris-led.local</strong> i en webbläsare på samma nätverk. Om det inte fungerar, leta upp <strong>elpris-led-xxxxxx</strong> i routerns lista över enheter och öppna dess IP-adress. Sätt ett OTA-lösenord och ett lösenord för konfigportalen där, och kryssa i <em>Omvänd riktning</em> om tiden går åt fel håll. Sidan finns på svenska.">Open <strong>http://elpris-led.local</strong> in a browser on the same network. If that doesn't work, look for <strong>elpris-led-xxxxxx</strong> in your router's device list and open its IP address. Set an OTA password and a config portal password there, and tick <em>Reverse direction</em> if time runs the wrong way.</li>
     </ol>
-    <p>New releases are installed automatically, so you only need this page once.</p>
+    <p data-sv="Nya versioner installeras automatiskt, så den här sidan behöver du bara en gång.">New releases are installed automatically, so you only need this page once.</p>
   </section>
 
   <footer>
-    <p>Parts list, wiring diagram and source code are on <a href="https://github.com/flysen/elpris-led">GitHub</a>. Elpriser tillhandahålls av <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>. Try the color modes and settings in the <a href="emulator/">emulator</a>, by <a href="https://github.com/sealjo">@sealjo</a>.</p>
+    <p data-sv="Komponentlista, kopplingsschema och källkod finns på <a href='https://github.com/flysen/elpris-led'>GitHub</a>. Elpriser tillhandahålls av <a href='https://www.elprisetjustnu.se'>Elpriset just nu.se</a>. Prova färglägena och inställningarna i <a href='emulator/'>emulatorn</a>, av <a href='https://github.com/sealjo'>@sealjo</a>.">Parts list, wiring diagram and source code are on <a href="https://github.com/flysen/elpris-led">GitHub</a>. Elpriser tillhandahålls av <a href="https://www.elprisetjustnu.se">Elpriset just nu.se</a>. Try the color modes and settings in the <a href="emulator/">emulator</a>, by <a href="https://github.com/sealjo">@sealjo</a>.</p>
     <p id="version"></p>
   </footer>
 </main>
 
+<script src="i18n.js"></script>
 <script>
   // Example day: low at night, peaks in the morning and evening, compared with a normal price like the lamp's
   // default color mode: yellow within ±20 öre, green/red beyond, \"very\" from ±80 öre. Then one off LED and
@@ -148,9 +151,16 @@
   addLed('', HUE[level(-0.3)]);   // tomorrow 08-17: cheaper than today
   addLed('', HUE[level(0.25)]);   // tomorrow 17-24: more expensive than today
 
+  let version = '';
+  const showVersion = () => { if (version) document.getElementById('version').textContent = 'Version ' + version; };
+  const showTitle = () => { document.title = T('Install Elpris-LED', 'Installera Elpris-LED'); };
+  I18N.onChange(() => { showTitle(); showVersion(); });
+  document.getElementById('langBtn').addEventListener('click', I18N.toggle);
+  I18N.apply(I18N.pick());
+
   fetch('manifest.json')
     .then(r => r.json())
-    .then(m => { document.getElementById('version').textContent = 'Version ' + m.version; })
+    .then(m => { version = m.version; showVersion(); })
     .catch(() => {});
 </script>
 </body>

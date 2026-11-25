@@ -13,10 +13,10 @@ test-sanitize: tests/test_logic_san
 coverage:
 	bash scripts/coverage.sh
 
-tests/test_logic: tests/test_logic.cpp elpris_led/elpris_logic.h
+tests/test_logic: tests/test_logic.cpp elpris_led/elpris_logic.h elpris_led/elpris_text.h
 	$(CXX) $(CXXFLAGS) -o $@ tests/test_logic.cpp
 
-tests/test_logic_san: tests/test_logic.cpp elpris_led/elpris_logic.h
+tests/test_logic_san: tests/test_logic.cpp elpris_led/elpris_logic.h elpris_led/elpris_text.h
 	$(CXX) $(SANFLAGS) -o $@ tests/test_logic.cpp
 
 clean:

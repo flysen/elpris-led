@@ -12,19 +12,21 @@ Elpris-LED: firmware for an ESP32 driving a WS2812B LED strip that shows the day
 |---|---|
 | `elpris_led/elpris_led.ino` | The sketch: wifi, fetching prices, updates, web UI, drawing the strip |
 | `elpris_led/elpris_logic.h` | Pure logic with no Arduino dependencies: time and DST, slots, LED mapping, color levels, normal price, versions, the blue status LED's patterns. Tested |
+| `elpris_led/elpris_text.h` | The web page's texts in English and Swedish, and how the page's language is chosen. Tested |
 | `elpris_led/platform.h` | Board-specific includes, pins and small helpers (ESP32) |
 | `tests/test_logic.cpp`, `Makefile` | Unit tests for `elpris_logic.h`, run on a normal computer |
 | `scripts/` | Build, packaging, release-tag check, dependency pins (`arduino-deps.sh`) and the emulator's price fetcher |
 | `.github/workflows/` | `compile.yml` (CI), `release.yml` (tag → release + install page), `prices.yml` (hourly prices for the emulator) |
 | `.github/pull_request_template.md` | Summary, changes and test cases for every pull request |
 | `docs/index.html` | The install page (GitHub Pages) |
+| `docs/i18n.js` | English and Swedish for the install page and the emulator |
 | `docs/emulator/index.html` | The emulator: the lamp's color logic in JavaScript, on real prices |
 | `docs/normal-price-mode.md` | Design of the default color mode |
 | `CHANGELOG.md`, `README.md` | User-facing history and documentation |
 
 ## Rules that must not be broken
 
-1. **English only** in the repository: code, comments, UI text, docs, commit messages and pull requests. (The maintainers may talk to you in Swedish; answer them in their language, but write English into the repo.)
+1. **English only** in the repository: code, comments, docs, commit messages and pull requests. (The maintainers may talk to you in Swedish; answer them in their language, but write English into the repo.) The one exception is **translations of UI text**: the lamp's web page is in English and Swedish, and every text is a line in `elpris_led/elpris_text.h` with both languages. Write the English first, then the Swedish; never put UI text straight into the sketch. The config portal stays in English. The install page and the emulator are in English and Swedish too: an element's Swedish goes right next to it in a `data-sv` attribute (or `data-sv-aria`), and texts made by a script are written as `T("English", "Svenska")`; see `docs/i18n.js`.
 2. **No passwords or keys in the code.** OTA and config portal passwords are set in the lamp's web UI and stored on the device.
 3. **Lamps in the field must keep working after an update:**
    - Never change the **flash layout**: ESP32 *Minimal SPIFFS* (`min_spiffs`). Over-the-air updates can't change it.

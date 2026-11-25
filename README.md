@@ -248,9 +248,10 @@ The release stops before anything is published if:
 - the tag isn't `v2.1`, `v2.1.3` or `v2.1-rc1`,
 - a stable tag's commit isn't on `main` (release candidates may be tagged on a pull request's branch, to try a change on a lamp before merging),
 - a stable tag isn't higher than the previous stable release (lamps would ignore it),
+- a stable tag's commit has no heading for it in `CHANGELOG.md` (so a tag set before the pull request was merged stops here),
 - any test or build check fails.
 
-**Release candidates** (`v2.1-rc1`) are published as pre-releases only. They don't update the install page, and lamps on the normal channel never install them. Lamps with *Also install test versions* ticked install them with *Check for updates now*, or within six hours; others can flash the `-full.bin` by hand. When it works, tag `v2.1` on the same commit. A lamp running `v2.1-rc1` moves on to `v2.1` by itself, on either channel.
+**Release candidates** (`v2.1-rc1`) are published as pre-releases only. They don't update the install page, and lamps on the normal channel never install them. Lamps with *Also install test versions* ticked install them with *Check for updates now*, or within six hours; others can flash the `-full.bin` by hand. When it works, merge the pull request with *Unreleased* renamed to `v2.1` in `CHANGELOG.md`, and tag `v2.1` on `main`. A lamp running `v2.1-rc1` moves on to `v2.1` by itself, on either channel.
 
 **Flash layout:** ESP32 uses the *Minimal SPIFFS* partition scheme (two 1.9 MB app slots). Automatic updates only replace the app, never the flash layout, so it must not change in a release. If they ever have to, lamps need a USB install from the install page.
 

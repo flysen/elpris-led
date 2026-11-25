@@ -4,6 +4,8 @@ What's new in each release of Elpris-LED, written for people who use the lamp. L
 
 ## Unreleased
 
+## v5.2
+
 - **In Swedish:** the lamp's web page, the install page and the emulator. A browser set to Swedish gets Swedish, others English. On the lamp, choose the language yourself under *Device → Language / Språk*; on the install page and in the emulator, with the *Svenska / English* button. The config portal for setting up wifi stays in English, and so do the install dialogs, which come from ESP Web Tools.
 
 ## v5.1.4
